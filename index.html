@@ -3,11 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0"> 
-    <title>臺灣空域雷達監控 (高效能全球機場版)</title>
+    <title>臺灣空域雷達監控 (FIR 邊界版)</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.4.1/MarkerCluster.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.4.1/MarkerCluster.Default.css" />
-    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.label/0.2.1/leaflet.label.css" />
+
     <style>
         /* ========================================================== */
         /* 基礎樣式與深色 UI 主題 (Dark UI Theme) */
@@ -92,6 +93,15 @@
             height: 6px; 
             border: 2px solid #fff;
             box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+        }
+
+        /* FIR 邊界標籤樣式 */
+        .fir-label {
+            font-size: 12px;
+            font-weight: bold;
+            color: #FFD54F; /* 醒目的黃色 */
+            text-shadow: 0 0 3px #000; /* 黑色陰影讓文字在地圖上更清晰 */
+            pointer-events: none; /* 讓標籤不阻礙點擊地圖 */
         }
 
         /* Leaflet 彈出式資訊框 (Popup) 樣式修正，以適應深色 UI */
@@ -199,6 +209,7 @@
             <hr style="border-color: #555; margin: 10px 0;">
 
             <div id="airport-status" style="font-size: 14px;">機場資訊：載入中...</div>
+            <div id="fir-status" style="font-size: 14px;">FIR 邊界：載入中...</div>
         </div>
     </div>
 
@@ -211,22 +222,28 @@
     
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.4.1/leaflet.markercluster.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.label/0.2.1/leaflet.label.js"></script>
+    
+    <script src='https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js'></script>
 
     <script>
         // ==========================================================
         // 核心配置
         // ==========================================================
         const PROXY_URL = "https://flight123.vercel.app/api/proxy"; 
-        // 恢復到適合看全球的視角
         const INITIAL_VIEW = [20, 120]; 
         const INITIAL_ZOOM = 3;
         
         // 全球機場數據集 URL (約 28k 個機場)
         const AIRPORT_DATA_URL = "https://raw.githubusercontent.com/mwgg/Airports/master/airports.json";
+        
+        // 全球 FIR 邊界 GeoJSON URL (非官方數據源)
+        // 這是來自 ArcGIS Online 的一個公開 GeoJSON 連結
+        const FIR_DATA_URL = "https://opendata.arcgis.com/datasets/2b42d385f0b54359990833a696231ccf_0.geojson";
+
 
         const mapLayers = {
             standard: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap' }),
-            // ⚠️ 移除 OpenAIP 圖層
         };
         
         // ==========================================================
@@ -238,35 +255,65 @@
         var flightMarkers = {};
         var intervalId = null;
 
-        // 全球機場標記集群層
-        var airportMarkersCluster = L.markerClusterGroup({
-            // 自訂集群圖示，使用紅色調
-            iconCreateFunction: function(cluster) {
-                var count = cluster.getChildCount();
-                var size = 'Small';
-                if (count > 100) size = 'Large';
-                else if (count > 10) size = 'Medium';
-                
-                var className = 'marker-cluster marker-cluster-' + size;
-                var html = '<div><span>' + count + '</span></div>';
-
-                var style = `
-                    background-color: rgba(255, 107, 107, 0.6); 
-                    color: #fff;
-                    border: 1px solid rgba(255, 255, 255, 0.8);
-                    box-shadow: 0 0 5px rgba(0,0,0,0.5);
-                `;
-                // 由於 CSS 樣式在 HTML 文件的 <style> 標籤中定義，這裡無需在 JS 中重複設定
-                // 但為了 Leaflet 正常渲染，我們保持 iconCreateFunction 的結構。
-
-                return L.divIcon({ html: html, className: className, iconSize: new L.Point(40, 40)});
-            }
-        });
+        var airportMarkersCluster = L.markerClusterGroup({});
         map.addLayer(airportMarkersCluster);
+
+        // FIR 邊界 GeoJSON 層
+        var firGeoJsonLayer = L.geoJSON(null, {
+            style: function(feature) {
+                // 每個 FIR 邊界的樣式
+                return {
+                    color: '#FF6B6B',      // 紅色邊界線
+                    weight: 2,             // 線條寬度
+                    opacity: 0.8,          // 線條透明度
+                    fillColor: '#FF6B6B',  // 填充顏色
+                    fillOpacity: 0.05      // 非常低的填充透明度
+                };
+            },
+            onEachFeature: function(feature, layer) {
+                // 1. 綁定彈出式視窗 (Popup)
+                const fir_name = feature.properties.FIR_NAME || 'N/A';
+                const icao_code = feature.properties.ICAO_CODE || 'N/A';
+                const fir_popup = `
+                    <b>飛航情報區 (FIR)</b><br>
+                    名稱: ${fir_name}<br>
+                    ICAO 代碼: <b>${icao_code}</b>
+                `;
+                layer.bindPopup(fir_popup);
+
+                // 2. 添加永久標籤 (Label)
+                if (icao_code !== 'N/A') {
+                    try {
+                        // 使用 turf.js 計算多邊形的中心點，作為標籤位置
+                        const centroid = turf.centroid(feature.geometry);
+                        const lon = centroid.geometry.coordinates[0];
+                        const lat = centroid.geometry.coordinates[1];
+                        
+                        // 創建一個帶有 FIR 代碼的永久標籤
+                        L.marker([lat, lon], {
+                            icon: L.divIcon({
+                                className: 'fir-label',
+                                html: icao_code,
+                                iconSize: [100, 12],
+                                iconAnchor: [50, 6] 
+                            }),
+                            // 設定標籤不會被點擊、不會阻礙地圖操作
+                            interactive: false
+                        }).addTo(map);
+
+                    } catch(e) {
+                        // 處理多邊形計算中心點失敗的情況 (例如無效的 GeoJSON)
+                        console.warn(`無法計算 FIR ${icao_code} 的中心點:`, e);
+                    }
+                }
+            }
+        }).addTo(map);
+
 
         // UI 元素
         const statusText = document.getElementById('status-info').querySelector('.status-text');
         const airportStatusEl = document.getElementById('airport-status');
+        const firStatusEl = document.getElementById('fir-status');
         const totalFlightsEl = document.getElementById('total-flights');
         const departureFlightsEl = document.getElementById('departure-flights');
         const arrivalFlightsEl = document.getElementById('arrival-flights');
@@ -291,7 +338,7 @@
         }
         
         // ==========================================================
-        // 全球機場標記載入 (恢復)
+        // 全球機場標記載入
         // ==========================================================
         async function loadGlobalAirports() {
             airportStatusEl.textContent = `機場資訊：正在載入...`;
@@ -305,7 +352,6 @@
                 let markers = [];
                 let airportCount = 0;
 
-                // 自訂機場圖標
                 const airportIcon = L.divIcon({
                     className: 'airport-icon',
                     iconSize: [10, 10],
@@ -317,7 +363,6 @@
                     const lat = data.lat;
                     const lon = data.lon;
 
-                    // 只顯示有 IATA 代碼的重要機場 (約 14k 個)
                     if (data.iata && data.iata !== '\\N' && lat && lon) {
                         const popupContent = `
                             <b>${data.name}</b><br>
@@ -334,9 +379,7 @@
                     }
                 }
                 
-                // 將所有機場標記添加到集群層中
                 airportMarkersCluster.addLayers(markers);
-
                 airportStatusEl.textContent = `機場資訊：已載入 ${airportCount} 個重要機場`;
 
             } catch (err) {
@@ -346,14 +389,37 @@
             }
         }
 
+        // ==========================================================
+        // 全球 FIR 邊界載入 (新功能)
+        // ==========================================================
+        async function loadFirBoundaries() {
+            firStatusEl.textContent = `FIR 邊界：正在載入...`;
+            try {
+                const res = await fetch(FIR_DATA_URL);
+                if (!res.ok) {
+                    throw new Error(`HTTP 錯誤: ${res.status}. 無法獲取 FIR 邊界數據。`);
+                }
+                const firData = await res.json();
+                
+                // 將 GeoJSON 數據添加到圖層中，觸發 onEachFeature 函數繪製邊界和標籤
+                firGeoJsonLayer.addData(firData);
+
+                firStatusEl.textContent = `FIR 邊界：已載入 ${firData.features.length} 個飛航情報區`;
+
+            } catch (err) {
+                console.error("載入 FIR 邊界失敗", err);
+                firStatusEl.textContent = `FIR 邊界：載入失敗 (${err.message})`
+                firStatusEl.classList.add('error');
+            }
+        }
+
 
         // ==========================================================
         // 航班數據抓取與處理 (保持邏輯不變)
         // ==========================================================
-
         async function fetchFlights() {
-            // ... (fetchFlights 函數保持與前一版本一致) ...
             try {
+                // ... (內容保持不變) ...
                 statusText.textContent = `嘗試通過 Vercel 代理更新 OpenSky 數據... (${new Date().toLocaleTimeString('zh-TW')})`;
                 statusText.classList.remove('error');
 
@@ -486,7 +552,7 @@
             filterTimeout = setTimeout(() => {
                 if (toggleButton.checked) {
                     stopFetching();
-                    startFetching();
+                    startFetching(); 
                 } else {
                     fetchFlights(); 
                 }
@@ -502,8 +568,9 @@
             updateAndRefetch();
         });
 
-        // 啟動時：載入機場數據，並開始抓取航班數據
+        // 啟動時：載入機場數據、FIR 邊界，並開始抓取航班數據
         loadGlobalAirports();
+        loadFirBoundaries(); 
         startFetching();
     </script>
 </body>
