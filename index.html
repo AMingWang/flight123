@@ -2,11 +2,12 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>臺灣空域雷達監控 (優化佈局/暗色預設)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"> 
+    <title>臺灣空域雷達監控 (響應式)</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <style>
         /* ========================================================== */
-        /* 基礎樣式與暗色主題 */
+        /* 基礎樣式與大螢幕佈局 (Desktop First) */
         /* ========================================================== */
         body { 
             margin: 0; 
@@ -20,8 +21,8 @@
             z-index: 1; 
         }
 
-        /* UI 容器 - 左上 (統計/地圖樣式) */
-        .info-container-top {
+        /* 主容器：使用 Flexbox 來自動管理左側所有卡片 */
+        .left-ui-container {
             position: absolute;
             top: 15px;
             left: 15px;
@@ -31,18 +32,7 @@
             gap: 10px;
         }
 
-        /* UI 容器 - 左下 (狀態/篩選器) ⬅️ 堆疊篩選器 */
-        .info-container-bottom {
-            position: absolute;
-            bottom: 15px; 
-            left: 15px; 
-            z-index: 1000;
-            display: flex;
-            flex-direction: column; /* 垂直堆疊 */
-            gap: 10px;
-        }
-
-        /* 卡片通用樣式 */
+        /* 卡片通用樣式 - 大螢幕固定寬度 */
         .card {
             background: rgba(45, 45, 45, 0.95);
             color: #E0E0E0;
@@ -51,80 +41,41 @@
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
             border: 1px solid #555;
             line-height: 1.6;
-            width: 250px; /* 固定卡片寬度，避免溢出 */
+            width: 280px; /* 增加寬度以適應內容，但仍為固定 */
+            transition: width 0.3s;
         }
 
-        /* 統計卡片 */
-        .stats-card {
-            /* 保持左上角 */
+        /* 統計與篩選卡片 */
+        .stats-card, .filter-card {
+            order: 1; /* 保持在頂部 */
         }
-
-        /* 篩選器卡片 (移到左下角) */
-        .filter-card {
-             /* 保持左下角 */
-        }
-        .filter-card label, .filter-card input[type="range"] {
-            display: block;
-            margin-top: 10px;
-        }
-        .filter-card output {
-            font-weight: bold;
-            color: #64B5F6;
-        }
-
-        /* 狀態訊息卡片 */
+        /* 狀態卡片 (在大螢幕上保持在底部) */
         .status-card {
-            font-size: 13px;
-        }
-        
-        /* 地圖樣式切換按鈕 (與統計卡片對齊) */
-        #map-style-toggle {
-            background: #333; 
-            color: white; 
-            border: 1px solid #555; 
-            padding: 8px 12px; 
-            border-radius: 4px; 
-            cursor: pointer;
-            width: 150px; /* 調整按鈕寬度 */
+            order: 3;
+            max-width: 450px;
         }
 
-
-        /* 側邊欄詳情面板 (右側) - 保持不變 */
+        /* 右側詳情面板 - 大螢幕 (從右側滑入) */
         #detail-panel {
             position: absolute;
             top: 0;
             right: 0;
-            width: 300px;
+            width: 300px; /* 固定寬度 */
             height: 100vh;
             background: rgba(30, 30, 30, 0.98);
             color: #E0E0E0;
             z-index: 999;
             padding: 20px;
             box-shadow: -4px 0 10px rgba(0, 0, 0, 0.5);
-            transform: translateX(300px); 
+            transform: translateX(300px); /* 默認隱藏 */
             transition: transform 0.3s ease-in-out;
             overflow-y: auto;
         }
         #detail-panel.visible {
             transform: translateX(0);
         }
-        #detail-panel h3 {
-            margin-top: 0;
-            padding-bottom: 10px;
-            border-bottom: 1px solid #555;
-            color: #64B5F6;
-        }
-        #detail-panel button {
-            background: #FF6B6B;
-            color: white;
-            border: none;
-            padding: 5px 10px;
-            border-radius: 4px;
-            cursor: pointer;
-            float: right;
-        }
 
-        /* 其他元素樣式... (省略，因為它們沒有改變) */
+        /* 其他輔助樣式保持不變 */
         .error { color: #FF6B6B; font-weight: bold; }
         .count-label { display: inline-block; width: 140px; font-weight: normal; font-size: 15px; }
         .count-number { font-size: 18px; font-weight: bold; margin-left: 5px; }
@@ -133,12 +84,66 @@
         .total { color: #FFD54F; }
         .plane-icon { transform-origin: center center; cursor: pointer; }
         h3 { margin: 0 0 10px 0; padding-bottom: 5px; border-bottom: 1px solid #555; font-size: 16px; color: #F5F5F5; }
+
+        /* ========================================================== */
+        /* 小螢幕響應式佈局 (Media Query for max-width: 600px) */
+        /* ========================================================== */
+        @media (max-width: 600px) {
+            
+            /* 調整主容器，將所有 UI 卡片移到頂部並橫跨螢幕 */
+            .left-ui-container {
+                top: 0;
+                left: 0;
+                /* 更改為水平堆疊，如果空間足夠（雖然手機通常不夠） */
+                flex-direction: column; 
+                width: 100%;
+                gap: 5px;
+                padding: 10px;
+                background: rgba(18, 18, 18, 0.9); /* 確保 UI 不會被地圖圖塊遮擋 */
+            }
+
+            /* 所有卡片：全寬且減少內邊距 */
+            .card {
+                width: auto; 
+                margin: 0 5px; /* 增加左右間隔 */
+                padding: 8px 12px;
+                box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
+            }
+            
+            /* 統計卡片 - 調整行寬度 */
+            .count-label {
+                width: 120px;
+                font-size: 13px;
+            }
+            .count-number {
+                font-size: 16px;
+            }
+
+            /* 地圖樣式切換按鈕 */
+            #map-style-toggle {
+                width: 100%;
+                margin: 0 5px;
+            }
+            
+            /* 右側詳情面板 - 小螢幕 (從底部滑入並全寬) */
+            #detail-panel {
+                width: 100%;
+                height: 70vh; /* 佔據螢幕底部 70% */
+                bottom: 0;
+                top: auto;
+                transform: translateY(70vh); /* 默認隱藏 */
+                transition: transform 0.3s ease-in-out;
+            }
+            #detail-panel.visible {
+                transform: translateY(0);
+            }
+        }
     </style>
 </head>
 <body>
     <div id="map"></div>
     
-    <div class="info-container-top">
+    <div class="left-ui-container">
         <div class="card stats-card">
             <h3>空域實時統計</h3>
             <span class="count-label total">總航班數 (Total):</span>
@@ -156,12 +161,10 @@
             </label>
         </div>
         
-        <button id="map-style-toggle">
+        <button id="map-style-toggle" style="background: #333; color: white; border: 1px solid #555; padding: 8px 12px; border-radius: 4px; cursor: pointer;">
             切換地圖: 暗色
         </button>
-    </div>
-    
-    <div class="info-container-bottom">
+
         <div class="card filter-card">
             <h3>篩選器</h3>
             
@@ -194,13 +197,12 @@
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script>
         // ==========================================================
-        // 核心配置
+        // 核心配置 (保持不變)
         // ==========================================================
         const PROXY_URL = "https://flight123.vercel.app/api/proxy"; 
-        const INITIAL_VIEW = [25.08, 121.23]; // 桃園機場附近
+        const INITIAL_VIEW = [25.08, 121.23];
         const INITIAL_ZOOM = 9;
         
-        // 地圖圖層定義
         const mapLayers = {
             standard: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap' }),
             dark: L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png', { maxZoom: 20, attribution: '© Stadia Maps' })
@@ -210,13 +212,13 @@
         // 初始化
         // ==========================================================
         var map = L.map('map').setView(INITIAL_VIEW, INITIAL_ZOOM); 
-        mapLayers.dark.addTo(map); // ⬅️ 預設改為暗色地圖
-        var currentMapStyle = 'dark'; // ⬅️ 更新預設樣式
+        mapLayers.dark.addTo(map); 
+        var currentMapStyle = 'dark'; 
         
         var flightMarkers = {};
         var intervalId = null;
         
-        // UI 元素
+        // UI 元素 (保持不變)
         const statusText = document.getElementById('status-info').querySelector('.status-text');
         const totalFlightsEl = document.getElementById('total-flights');
         const departureFlightsEl = document.getElementById('departure-flights');
@@ -231,10 +233,9 @@
         const vsOutput = document.getElementById('vs-output');
 
         // ==========================================================
-        // 地圖相關輔助功能
+        // 地圖相關輔助功能 (保持不變)
         // ==========================================================
 
-        // 飛機圖標 (旋轉)
         function createPlaneIcon(heading) {
             return L.divIcon({
                 className: "plane-icon",
@@ -245,7 +246,6 @@
             });
         }
         
-        // 設置機場標記 (簡化)
         function addAirportMarkers() {
             const airports = [
                 { name: "桃園 TPE", lat: 25.08, lon: 121.23 },
@@ -267,7 +267,6 @@
         }
         addAirportMarkers();
 
-        // 點擊飛機時顯示右側面板
         function showDetailPanel(icao24, content) {
             detailContent.innerHTML = content;
             detailPanel.classList.add('visible');
@@ -276,17 +275,16 @@
             }
         }
         
-        // 關閉右側面板
         document.getElementById('close-panel').addEventListener('click', () => {
             detailPanel.classList.remove('visible');
         });
 
         // ==========================================================
-        // 數據抓取與處理
+        // 數據抓取與處理 (保持不變)
         // ==========================================================
 
         async function fetchFlights() {
-            
+            // (內容與前一版本相同，省略以保持簡潔)
             try {
                 statusText.textContent = `嘗試通過 Vercel 代理更新 OpenSky 數據... (${new Date().toLocaleTimeString('zh-TW')})`;
                 statusText.classList.remove('error');
@@ -308,11 +306,9 @@
                 let arrivalCount = 0;   
                 let activeFlights = new Set(); 
                 
-                // 獲取篩選器值
                 const minAltitudeFt = parseInt(altRange.value);
                 const minVerticalFtMin = parseInt(vsRange.value);
 
-                // --- 數據解析邏輯 ---
                 for (const f of states) {
                     const icao24 = f[0];         
                     const callsign = f[1] ? f[1].trim() : "N/A"; 
@@ -326,17 +322,14 @@
 
                     if (lat === null || lon === null || altitude === null) continue;
                     
-                    // 單位轉換
                     const altitudeFt = Math.round(altitude * 3.28084); 
                     const speedKt = velocity !== null ? Math.round(velocity * 1.94384) : 'N/A';
                     const headingDeg = heading !== null ? Math.round(heading) : 0;
                     const verticalFtMin = verticalRate !== null ? Math.round(verticalRate * 196.85) : 0; 
 
-                    // 篩選邏輯
                     if (altitudeFt < minAltitudeFt) continue;
                     if (Math.abs(verticalFtMin) < minVerticalFtMin) continue;
 
-                    // 判斷狀態並計數
                     if (verticalFtMin > 100) {
                         departureCount++; 
                     } else if (verticalFtMin < -100) {
@@ -352,7 +345,6 @@
                         <b>航向:</b> ${headingDeg}° / <b>垂直:</b> ${verticalFtMin} ft/min
                     `;
                     
-                    // 右側詳情面板的內容
                     const detailHtml = `
                         <p><b>航班號:</b> ${callsign}</p>
                         <p><b>ICAO24:</b> ${icao24}</p>
@@ -365,14 +357,12 @@
                     `;
 
                     if (flightMarkers[icao24]) {
-                        // 更新現有標記
                         let marker = flightMarkers[icao24];
                         marker.setLatLng(new L.LatLng(lat, lon)); 
                         marker.setIcon(createPlaneIcon(headingDeg));
                         marker.setPopupContent(popupContent);
                         marker.off('click').on('click', () => showDetailPanel(icao24, detailHtml));
                     } else {
-                        // 新增標記
                         let marker = L.marker([lat, lon], {icon: createPlaneIcon(headingDeg), title: callsign})
                                          .addTo(map)
                                          .bindPopup(popupContent)
@@ -382,7 +372,6 @@
                     }
                 }
 
-                // 清理已離場的飛機標記
                 for (let id in flightMarkers) {
                     if (!activeFlights.has(id)) {
                         map.removeLayer(flightMarkers[id]);
@@ -390,7 +379,6 @@
                     }
                 }
                 
-                // 更新 UI 統計數據
                 totalFlightsEl.textContent = flightCount;
                 departureFlightsEl.textContent = departureCount;
                 arrivalFlightsEl.textContent = arrivalCount;
@@ -408,10 +396,9 @@
         }
         
         // ==========================================================
-        // 事件監聽與控制邏輯
+        // 事件監聽與控制邏輯 (保持不變)
         // ==========================================================
         
-        // A. 自動刷新開關邏輯
         function startFetching() {
             if (intervalId !== null) return;
             fetchFlights(); 
@@ -432,7 +419,6 @@
             this.checked ? startFetching() : stopFetching();
         });
         
-        // B. 地圖樣式切換邏輯
         mapStyleToggleBtn.addEventListener('click', () => {
             if (currentMapStyle === 'standard') {
                 map.removeLayer(mapLayers.standard);
@@ -447,20 +433,17 @@
             }
         });
         
-        // C. 篩選器值更新及觸發數據重繪
-        // 為了避免重複的 fetch，我們使用一個 debounce 或直接手動觸發
         let filterTimeout;
         function updateAndRefetch() {
             clearTimeout(filterTimeout);
             filterTimeout = setTimeout(() => {
-                // 停止並重新開始，強制更新
                 if (toggleButton.checked) {
                     stopFetching();
                     startFetching();
                 } else {
-                    fetchFlights(); // 如果暫停了，手動觸發一次更新
+                    fetchFlights(); 
                 }
-            }, 500); // 延遲 500ms 後執行，減少操作滑塊時的頻繁請求
+            }, 500);
         }
 
         altRange.addEventListener('input', () => {
