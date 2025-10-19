@@ -1,10 +1,9 @@
 {
-  "functions": [
-    {
-      "src": "api/proxy.js",
-      "use": "@vercel/node"
+  "functions": {
+    "api/proxy.js": {
+      "runtime": "@vercel/node@20.2.0"
     }
-  ],
+  },
   "rewrites": [
     {
       "source": "/api/proxy",
