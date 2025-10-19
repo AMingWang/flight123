@@ -1,6 +1,6 @@
 {
   "functions": {
-    "api/*.js": { // ⬅️ 使用萬用字元確保 Vercel 找到 'api' 內的 JS 函數
+    "api/proxy.js": {
       "runtime": "@vercel/node@20.2.0"
     }
   },
