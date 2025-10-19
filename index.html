@@ -74,9 +74,8 @@
          * 抓取航班資料的異步函數 (使用 Vercel 代理 OpenSky)
          */
         async function fetchFlights() {
-            // 🚨 這是關鍵！請替換成您在 Vercel 部署後獲得的實際網址！
-            // 範例：https://my-flight-proxy.vercel.app/api/proxy
-            const PROXY_URL = "https://<YOUR-VERCEL-DOMAIN>/api/proxy"; 
+            // 🚨 這是最終的 Vercel 代理網址，已經替換
+            const PROXY_URL = "https://flight123-zkau4ao44-yuzhans-projects.vercel.app/api/proxy"; 
             let url = PROXY_URL;
             
             try {
@@ -86,8 +85,7 @@
                 let res = await fetch(url);
 
                 if (!res.ok) {
-                    // 如果 Vercel 代理返回錯誤 (例如 500), 則拋出錯誤
-                    throw new Error(`HTTP 錯誤: ${res.status}. (請檢查 Vercel 部署或 API 錯誤)`);
+                    throw new Error(`HTTP 錯誤: ${res.status}. (請檢查 Vercel 代理服務是否正常運行)`);
                 }
                 
                 // Vercel 代理已直接返回 OpenSky 的 JSON 數據
