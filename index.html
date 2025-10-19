@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>臺灣空域雷達監控 (OpenSky 代理版)</title>
+    <title>桃園機場航班雷達 (FR24 代理版)</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <style>
         /* 基礎樣式 */
@@ -42,7 +42,7 @@
 <body>
     <div id="map"></div>
     <div class="info" id="status-info">
-        臺灣空域航班監控（數據通過 CORS 代理自 OpenSky Network）
+        桃園國際機場航班監控（數據通過 CORS 代理自 FlightRadar24）
         <div class="status-text">載入中...</div>
     </div>
 
@@ -72,27 +72,23 @@
         }
 
         /**
-         * 抓取航班資料的異步函數 (通過 CORS Anywhere 代理 OpenSky)
+         * 抓取航班資料的異步函數 (通過 CORS Anywhere 代理 FR24)
          */
         async function fetchFlights() {
-            // OpenSky API 根網址
-            const OPENSKY_ROOT_URL = "https://opensky-network.org/api";
+            // 原始 FR24 API URL (臺灣北部邊界: 25.5,24.8,121.7,121.0)
+            const FR24_API_URL = "https://data-live.flightradar24.com/zones/fcgi/feed.js?bounds=25.5,24.8,121.7,121.0";
             
-            // 完整的 OpenSky API URL (臺灣北部邊界: lamin=24.5&lomin=120.5&lamax=26.0&lomax=122.0)
-            const OPENSKY_API_URL = `${OPENSKY_ROOT_URL}/states/all?lamin=24.5&lomin=120.5&lamax=26.0&lomax=122.0`;
-            
-            // ⚠️ 這是關鍵！將 OpenSky URL 包裹在公共 CORS 代理中
-            // ❗ 如果 CORS Anywhere 失敗，您需要替換這個代理服務！
+            // ⚠️ 這是關鍵！將 FR24 URL 包裹在公共 CORS 代理中
             const PROXY_BASE = "https://cors-anywhere.herokuapp.com/";
-            let url = PROXY_BASE + OPENSKY_API_URL;
+            let url = PROXY_BASE + FR24_API_URL;
             
             try {
-                statusText.textContent = `嘗試通過 CORS 代理更新 OpenSky 數據... (${new Date().toLocaleTimeString('zh-TW')})`;
+                statusText.textContent = `嘗試通過 CORS 代理更新 FR24 數據... (${new Date().toLocaleTimeString('zh-TW')})`;
                 statusText.classList.remove('error');
 
                 let res = await fetch(url);
-                
-                // 檢查是否為 CORS Anywhere 的啟動頁面
+
+                // 檢查是否為 CORS Anywhere 的授權頁面（處理第一次訪問時的失敗）
                 const text = await res.clone().text(); 
                 if (text.includes('CORS Anywhere Demo') || text.includes('must click the button to authorize')) {
                     statusText.textContent = "請先手動授權 CORS 代理服務，然後刷新頁面。";
@@ -101,33 +97,33 @@
                 }
                 
                 if (!res.ok) {
-                    throw new Error(`HTTP 錯誤: ${res.status}. (CORS 代理或 OpenSky 服務異常)`);
+                    throw new Error(`HTTP 錯誤: ${res.status}. (CORS 代理或 FR24 服務異常)`);
                 }
                 
                 let data = await res.json();
                 
-                const states = data.states || [];
                 let flightCount = 0;
                 let activeFlights = new Set(); 
-                
-                // --- 數據解析邏輯 ---
-                for (const f of states) {
-                    // OpenSky State Vector 索引：
-                    const icao24 = f[0];        
-                    const callsign = f[1] ? f[1].trim() : "N/A"; 
-                    const lon = f[5];           
-                    const lat = f[6];           
-                    const velocity = f[9];      
-                    const heading = f[10];      
-                    const altitude = f[13];     
-                    const squawk = f[14] || "----"; 
 
-                    if (lat === null || lon === null) continue;
+                // 移除不需要的 meta keys
+                delete data.full_count;
+                delete data.version;
+
+                // --- 數據解析邏輯 (使用 FR24 的陣列格式) ---
+                for (let id in data) {
+                    let f = data[id]; // 航班資料陣列
+
+                    // FR24 數據陣列索引：
+                    const icao24 = id;
+                    const lat = f[1];             // 緯度
+                    const lon = f[2];             // 經度
+                    const heading = f[3] || 0;    // 航向
+                    const altitude = f[4] || 0;   // 高度 (英呎 - ft)
+                    const speed = f[5] || 0;      // 地速 (節 - kt)
+                    const squawk = f[6] || "----";// 應答機
+                    const callsign = f[16] || "N/A"; // 航班號
                     
-                    // 單位轉換
-                    const altitudeFt = altitude !== null ? Math.round(altitude * 3.28084) : 'N/A';
-                    const speedKt = velocity !== null ? Math.round(velocity * 1.94384) : 'N/A';
-                    const headingDeg = heading !== null ? Math.round(heading) : 0;
+                    if (lat === null || lon === null) continue;
                     
                     activeFlights.add(icao24);
                     flightCount++;
@@ -135,9 +131,9 @@
                     let popupContent = `
                         <b>航班號:</b> ${callsign}<br>
                         <b>ICAO24:</b> ${icao24}<br>
-                        <b>高度:</b> ${altitudeFt} ft<br>
-                        <b>速度:</b> ${speedKt} kt<br>
-                        <b>航向:</b> ${headingDeg}°<br>
+                        <b>高度:</b> ${altitude} ft<br>
+                        <b>速度:</b> ${speed} kt<br>
+                        <b>航向:</b> ${heading}°<br>
                         <b>應答機:</b> ${squawk}
                     `;
                     
@@ -145,11 +141,11 @@
                         // 更新現有標記
                         let marker = flightMarkers[icao24];
                         marker.setLatLng(new L.LatLng(lat, lon)); 
-                        marker.setIcon(createPlaneIcon(headingDeg));
+                        marker.setIcon(createPlaneIcon(heading));
                         marker.setPopupContent(popupContent);
                     } else {
                         // 新增標記
-                        let marker = L.marker([lat, lon], {icon: createPlaneIcon(headingDeg), title: callsign})
+                        let marker = L.marker([lat, lon], {icon: createPlaneIcon(heading), title: callsign})
                                      .addTo(map)
                                      .bindPopup(popupContent);
 
