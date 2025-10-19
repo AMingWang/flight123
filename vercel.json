@@ -1,4 +1,10 @@
 {
+  "functions": [
+    {
+      "src": "api/proxy.js",
+      "use": "@vercel/node"
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/proxy",
