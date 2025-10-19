@@ -1,7 +1,7 @@
 {
   "functions": {
     "api/proxy": { 
-      "runtime": "@vercel/node@20.x" // 使用最新的 Node.js 穩定版
+      "runtime": "@vercel/node@20.x" 
     }
   },
   "rewrites": [
