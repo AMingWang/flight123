@@ -1,8 +1,8 @@
 {
-  "rewrites": [
-    {
-      "source": "/api/proxy",
-      "destination": "/api/proxy"
-    }
-  ]
+  "name": "flight-proxy-app",
+  "version": "1.0.0",
+  "description": "CORS proxy for OpenSky Network.",
+  "dependencies": {
+    "node-fetch": "^2.6.7"  
+  }
 }
