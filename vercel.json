@@ -1,13 +1,13 @@
 {
   "functions": {
-    "api/*.js": { 
+    "api/proxy": { 
       "runtime": "@vercel/node@20.9.0" 
     }
   },
   "rewrites": [
     {
       "source": "/api/proxy",
-      "destination": "/api/proxy.js"
+      "destination": "/api/proxy.js" 
     }
   ]
 }
