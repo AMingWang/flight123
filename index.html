@@ -3,8 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0"> 
-    <title>臺灣空域雷達監控 (無詳情面板)</title>
+    <title>臺灣空域雷達監控 (全球機場版)</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.4.1/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.4.1/MarkerCluster.Default.css" />
+    
     <style>
         /* ========================================================== */
         /* 基礎樣式與深色 UI 主題 (Dark UI Theme) */
@@ -80,6 +83,33 @@
 
         /* 飛機圖標 */
         .plane-icon { transform-origin: center center; cursor: pointer; }
+
+        /* 機場標記的自訂圖標 */
+        .airport-icon {
+            background: #FF6B6B; 
+            border-radius: 50%; 
+            width: 6px; 
+            height: 6px; 
+            border: 2px solid #fff;
+            box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+        }
+
+        /* Leaflet 彈出式資訊框 (Popup) 樣式修正，以適應深色 UI */
+        .leaflet-popup-content-wrapper, .leaflet-popup-tip {
+            background: rgba(30, 30, 30, 0.9);
+            color: #E0E0E0;
+        }
+        .leaflet-popup-content-wrapper {
+            border-radius: 8px;
+            padding: 10px;
+        }
+        .leaflet-popup-content b {
+            color: #64B5F6;
+        }
+        .leaflet-popup-content hr {
+            border-color: #555; 
+            margin: 5px 0;
+        }
 
         /* ========================================================== */
         /* 小螢幕響應式佈局 (Max-width: 600px) */
@@ -168,6 +198,10 @@
                 最小垂直速度 (|ft/min|): <output id="vs-output">0</output>
             </label>
             <input type="range" id="vs-range" min="0" max="3000" step="100" value="0">
+            
+            <hr style="border-color: #555; margin: 10px 0;">
+
+            <div id="airport-status" style="font-size: 14px;">機場資訊：載入中...</div>
         </div>
     </div>
 
@@ -179,14 +213,20 @@
     </div>
     
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.4.1/leaflet.markercluster.js"></script>
+
     <script>
         // ==========================================================
         // 核心配置
         // ==========================================================
         const PROXY_URL = "https://flight123.vercel.app/api/proxy"; 
-        const INITIAL_VIEW = [25.08, 121.23];
-        const INITIAL_ZOOM = 9;
+        // 使用一個更廣闊的初始視圖來展示全球機場
+        const INITIAL_VIEW = [20, 120]; 
+        const INITIAL_ZOOM = 3;
         
+        // 全球機場數據集 URL (約 28k 個機場)
+        const AIRPORT_DATA_URL = "https://raw.githubusercontent.com/mwgg/Airports/master/airports.json";
+
         const mapLayers = {
             standard: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap' }),
         };
@@ -199,13 +239,54 @@
         
         var flightMarkers = {};
         var intervalId = null;
-        
+
+        // 全球機場標記集群層
+        var airportMarkersCluster = L.markerClusterGroup({
+            // 自訂集群圖示，使用紅色調
+            iconCreateFunction: function(cluster) {
+                var count = cluster.getChildCount();
+                var size = 'Small';
+                if (count > 100) size = 'Large';
+                else if (count > 10) size = 'Medium';
+                
+                var className = 'marker-cluster marker-cluster-' + size;
+                var html = '<div><span>' + count + '</span></div>';
+
+                // 自訂樣式，使其更符合深色 UI 主題
+                var style = `
+                    background-color: rgba(255, 107, 107, 0.6); 
+                    color: #fff;
+                    border: 1px solid rgba(255, 255, 255, 0.8);
+                    box-shadow: 0 0 5px rgba(0,0,0,0.5);
+                `;
+                if (size === 'Medium') {
+                    style = `
+                        background-color: rgba(255, 107, 107, 0.7); 
+                        color: #fff;
+                        border: 1px solid rgba(255, 255, 255, 0.8);
+                        box-shadow: 0 0 5px rgba(0,0,0,0.5);
+                    `;
+                } else if (size === 'Large') {
+                    style = `
+                        background-color: rgba(255, 107, 107, 0.8);
+                        color: #fff;
+                        border: 1px solid rgba(255, 255, 255, 0.8);
+                        box-shadow: 0 0 5px rgba(0,0,0,0.5);
+                    `;
+                }
+
+
+                return L.divIcon({ html: html, className: className, iconSize: new L.Point(40, 40), style: style });
+            }
+        });
+        map.addLayer(airportMarkersCluster);
+
         // UI 元素
         const statusText = document.getElementById('status-info').querySelector('.status-text');
+        const airportStatusEl = document.getElementById('airport-status');
         const totalFlightsEl = document.getElementById('total-flights');
         const departureFlightsEl = document.getElementById('departure-flights');
         const arrivalFlightsEl = document.getElementById('arrival-flights');
-        // 刪除 detailPanel, detailContent
         const toggleButton = document.getElementById('auto-refresh-toggle');
         const altRange = document.getElementById('alt-range');
         const vsRange = document.getElementById('vs-range');
@@ -226,32 +307,65 @@
             });
         }
         
-        function addAirportMarkers() {
-            const airports = [
-                { name: "桃園 TPE", lat: 25.08, lon: 121.23 },
-                { name: "松山 TSA", lat: 25.079, lon: 121.554 },
-                { name: "高雄 KHH", lat: 22.56, lon: 120.35 },
-            ];
-            const airportIcon = L.divIcon({
-                className: 'airport-icon',
-                html: `<div style="background:#64B5F6; border-radius:50%; width:8px; height:8px; border:2px solid #333;"></div>`,
-                iconSize: [12, 12],
-                iconAnchor: [6, 6]
-            });
+        // ==========================================================
+        // 全球機場標記載入
+        // ==========================================================
+        async function loadGlobalAirports() {
+            airportStatusEl.textContent = `機場資訊：正在載入...`;
+            try {
+                const res = await fetch(AIRPORT_DATA_URL);
+                if (!res.ok) {
+                    throw new Error(`HTTP 錯誤: ${res.status}. 無法獲取機場數據。`);
+                }
+                const airportData = await res.json();
+                
+                let markers = [];
+                let airportCount = 0;
 
-            airports.forEach(a => {
-                L.marker([a.lat, a.lon], { icon: airportIcon })
-                 .bindTooltip(a.name, { permanent: true, direction: 'right', className: 'airport-label' })
-                 .addTo(map);
-            });
+                // 自訂機場圖標
+                const airportIcon = L.divIcon({
+                    className: 'airport-icon',
+                    iconSize: [10, 10],
+                    iconAnchor: [5, 5]
+                });
+
+                for (const icao in airportData) {
+                    const data = airportData[icao];
+                    const lat = data.lat;
+                    const lon = data.lon;
+
+                    // 過濾掉沒有 IATA 代碼的小型機場，以確保顯示的是重要機場
+                    if (data.iata && data.iata !== '\\N' && lat && lon) {
+                        const popupContent = `
+                            <b>${data.name}</b><br>
+                            城市: ${data.city || 'N/A'}<br>
+                            國家: ${data.country}<br>
+                            IATA: <b>${data.iata}</b> | ICAO: <b>${icao}</b>
+                        `;
+                        
+                        const marker = L.marker([lat, lon], {icon: airportIcon, title: data.name})
+                                         .bindPopup(popupContent);
+                        
+                        markers.push(marker);
+                        airportCount++;
+                    }
+                }
+                
+                // 將所有機場標記添加到集群層中
+                airportMarkersCluster.addLayers(markers);
+
+                airportStatusEl.textContent = `機場資訊：已載入 ${airportCount} 個重要機場`;
+
+            } catch (err) {
+                console.error("載入全球機場數據失敗", err);
+                airportStatusEl.textContent = `機場資訊：載入失敗 (${err.message})`
+                airportStatusEl.classList.add('error');
+            }
         }
-        addAirportMarkers();
 
-        // ⚠️ 刪除 showDetailPanel 函數
-        // ⚠️ 刪除 document.getElementById('close-panel') 監聽器
 
         // ==========================================================
-        // 數據抓取與處理
+        // 航班數據抓取與處理
         // ==========================================================
 
         async function fetchFlights() {
@@ -315,7 +429,7 @@
                         <b>航班號:</b> ${callsign}<br>
                         <b>ICAO24:</b> ${icao24}<br>
                         <b>應答機:</b> ${squawk}<br>
-                        <hr style="border-color: #555; margin: 5px 0;">
+                        <hr>
                         <b>高度:</b> ${altitudeFt} ft<br>
                         <b>速度:</b> ${speedKt} kt<br>
                         <b>垂直:</b> ${verticalFtMin} ft/min<br>
@@ -327,12 +441,10 @@
                         marker.setLatLng(new L.LatLng(lat, lon)); 
                         marker.setIcon(createPlaneIcon(headingDeg));
                         marker.setPopupContent(popupContent);
-                        // 移除 .on('click', ...)
                     } else {
                         let marker = L.marker([lat, lon], {icon: createPlaneIcon(headingDeg), title: callsign})
                                          .addTo(map)
                                          .bindPopup(popupContent);
-                                         // 移除 .on('click', ...)
 
                         flightMarkers[icao24] = marker;
                     }
@@ -407,6 +519,8 @@
             updateAndRefetch();
         });
 
+        // 啟動時：載入機場數據，並開始抓取航班數據
+        loadGlobalAirports();
         startFetching();
     </script>
 </body>
