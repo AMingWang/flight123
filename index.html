@@ -2,100 +2,129 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>臺灣空域雷達監控 (修復地圖圖層)</title>
+    <title>臺灣空域雷達監控 (全功能版)</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <style>
-        /* 樣式部分保持不變 - 暗色 UI 樣式 */
+        /* ========================================================== */
+        /* 基礎樣式與暗色主題 */
+        /* ========================================================== */
         body { 
             margin: 0; 
             padding: 0; 
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #121212; /* 暗色背景 */
+            background-color: #121212; 
         }
         #map { 
             width: 100%; 
             height: 100vh; 
             z-index: 1; 
         }
-        /* 統計卡片的容器 (左上角) */
+
+        /* UI 容器 - 左上 (統計/控制) */
         .info-container-top {
             position: absolute;
             top: 15px;
             left: 15px;
             z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
         }
 
-        /* 狀態訊息卡片的容器 (左下角) ⬅️ 新增定位 */
+        /* UI 容器 - 左下 (狀態) */
         .info-container-bottom {
             position: absolute;
-            bottom: 15px; /* 底部邊距 */
-            left: 15px;  /* 左側邊距 */
+            bottom: 15px; 
+            left: 15px; 
             z-index: 1000;
         }
 
-        /* 統計卡片 - 暗色主題 (左上角) */
-        .stats-card {
+        /* 卡片通用樣式 */
+        .card {
             background: rgba(45, 45, 45, 0.95);
             color: #E0E0E0;
             padding: 12px 18px;
             border-radius: 8px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-            font-size: 14px;
             border: 1px solid #555;
+            line-height: 1.6;
         }
 
-        /* 狀態訊息卡片 - 暗色主題 (左下角) */
+        /* 統計卡片 */
+        .stats-card {
+            width: 250px;
+        }
+
+        /* 篩選器卡片 */
+        .filter-card {
+            width: 250px;
+        }
+        .filter-card label, .filter-card input[type="range"] {
+            display: block;
+            margin-top: 10px;
+        }
+        .filter-card output {
+            font-weight: bold;
+            color: #64B5F6;
+        }
+
+        /* 狀態訊息卡片 */
         .status-card {
-            background: rgba(45, 45, 45, 0.95);
-            color: #B0B0B0;
-            padding: 8px 18px;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
             font-size: 13px;
-            border: 1px solid #555;
-            font-weight: normal;
-            /* 調整寬度以適應內容 */
-            max-width: 450px; 
+            max-width: 450px;
         }
-        
-        .error {
-            color: #FF6B6B;
-            font-weight: bold;
+
+        /* 側邊欄詳情面板 (右側) */
+        #detail-panel {
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 300px;
+            height: 100vh;
+            background: rgba(30, 30, 30, 0.98);
+            color: #E0E0E0;
+            z-index: 999;
+            padding: 20px;
+            box-shadow: -4px 0 10px rgba(0, 0, 0, 0.5);
+            transform: translateX(300px); /* 默認隱藏 */
+            transition: transform 0.3s ease-in-out;
+            overflow-y: auto;
         }
-        
-        /* 統計數字樣式 */
-        .count-label {
-            display: inline-block;
-            width: 140px;
-            font-weight: normal;
-            font-size: 15px;
+        #detail-panel.visible {
+            transform: translateX(0);
         }
-        .count-number {
-            font-size: 18px;
-            font-weight: bold;
-            margin-left: 5px;
+        #detail-panel h3 {
+            margin-top: 0;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #555;
+            color: #64B5F6;
         }
+        #detail-panel button {
+            background: #FF6B6B;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            float: right;
+        }
+
+        /* 其他元素樣式 */
+        .error { color: #FF6B6B; font-weight: bold; }
+        .count-label { display: inline-block; width: 140px; font-weight: normal; font-size: 15px; }
+        .count-number { font-size: 18px; font-weight: bold; margin-left: 5px; }
         .arrival { color: #81C784; }
         .departure { color: #64B5F6; }
         .total { color: #FFD54F; }
-        .plane-icon {
-            transform-origin: center center;
-            cursor: pointer;
-        }
-        h3 {
-            margin: 0 0 10px 0;
-            padding-bottom: 5px;
-            border-bottom: 1px solid #555;
-            font-size: 16px;
-            color: #F5F5F5;
-        }
+        .plane-icon { transform-origin: center center; cursor: pointer; }
+        h3 { margin: 0 0 10px 0; padding-bottom: 5px; border-bottom: 1px solid #555; font-size: 16px; color: #F5F5F5; }
     </style>
 </head>
 <body>
     <div id="map"></div>
     
     <div class="info-container-top">
-        <div class="stats-card">
+        <div class="card stats-card">
             <h3>空域實時統計</h3>
             <span class="count-label total">總航班數 (Total):</span>
             <span id="total-flights" class="count-number total">0</span><br>
@@ -103,39 +132,96 @@
             <span id="departure-flights" class="count-number departure">0</span><br>
             <span class="count-label arrival">正在抵達 (Descending):</span>
             <span id="arrival-flights" class="count-number arrival">0</span>
+            
+            <hr style="border-color: #555; margin: 10px 0;">
+            
+            <label for="auto-refresh-toggle" style="font-weight: normal; font-size: 15px; color: #F5F5F5;">
+                <input type="checkbox" id="auto-refresh-toggle" checked style="margin-right: 5px;">
+                數據自動更新
+            </label>
         </div>
+        
+        <div class="card filter-card">
+            <h3>篩選器</h3>
+            
+            <label for="alt-range" style="font-weight: normal; font-size: 15px; color: #F5F5F5;">
+                最小高度 (ft): <output id="alt-output">0</output>
+            </label>
+            <input type="range" id="alt-range" min="0" max="40000" step="1000" value="0">
+            
+            <label for="vs-range" style="font-weight: normal; font-size: 15px; color: #F5F5F5;">
+                最小垂直速度 (|ft/min|): <output id="vs-output">0</output>
+            </label>
+            <input type="range" id="vs-range" min="0" max="3000" step="100" value="0">
+        </div>
+        
+        <button id="map-style-toggle" style="background: #333; color: white; border: 1px solid #555; padding: 8px 12px; border-radius: 4px; cursor: pointer;">
+            切換地圖: 標準
+        </button>
     </div>
     
     <div class="info-container-bottom">
-        <div class="status-card" id="status-info">
+        <div class="card status-card" id="status-info">
             臺灣空域航班監控（數據通過 Vercel 代理自 OpenSky Network 獲取）
             <div class="status-text">載入中...</div>
+        </div>
+    </div>
+    
+    <div id="detail-panel">
+        <button id="close-panel">關閉</button>
+        <h3>航班詳細資訊</h3>
+        <div id="flight-details-content">
+            請點擊地圖上的飛機圖標以查看詳情。
         </div>
     </div>
 
 
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script>
-        // 設定地圖中心在桃園機場附近，Zoom level 9
-        var map = L.map('map').setView([25.08, 121.23], 9); 
+        // ==========================================================
+        // 核心配置
+        // ==========================================================
+        const PROXY_URL = "https://flight123.vercel.app/api/proxy"; 
+        const INITIAL_VIEW = [25.08, 121.23]; // 桃園機場附近
+        const INITIAL_ZOOM = 9;
         
-        // 換回最穩定的 OpenStreetMap 標準圖層
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 18,
-            attribution: '© OpenStreetMap'
-        }).addTo(map);
+        // 地圖圖層定義
+        const mapLayers = {
+            standard: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap' }),
+            dark: L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png', { maxZoom: 20, attribution: '© Stadia Maps' })
+        };
+        
+        // ==========================================================
+        // 初始化
+        // ==========================================================
+        var map = L.map('map').setView(INITIAL_VIEW, INITIAL_ZOOM); 
+        mapLayers.standard.addTo(map); // 默認使用標準圖層
 
         var flightMarkers = {};
-        var statusText = document.getElementById('status-info').querySelector('.status-text');
+        var intervalId = null;
+        var currentMapStyle = 'standard';
         
-        var totalFlightsEl = document.getElementById('total-flights');
-        var departureFlightsEl = document.getElementById('departure-flights');
-        var arrivalFlightsEl = document.getElementById('arrival-flights');
+        // UI 元素
+        const statusText = document.getElementById('status-info').querySelector('.status-text');
+        const totalFlightsEl = document.getElementById('total-flights');
+        const departureFlightsEl = document.getElementById('departure-flights');
+        const arrivalFlightsEl = document.getElementById('arrival-flights');
+        const detailPanel = document.getElementById('detail-panel');
+        const detailContent = document.getElementById('flight-details-content');
+        const toggleButton = document.getElementById('auto-refresh-toggle');
+        const mapStyleToggleBtn = document.getElementById('map-style-toggle');
+        const altRange = document.getElementById('alt-range');
+        const vsRange = document.getElementById('vs-range');
+        const altOutput = document.getElementById('alt-output');
+        const vsOutput = document.getElementById('vs-output');
 
+        // ==========================================================
+        // 地圖相關輔助功能
+        // ==========================================================
 
         // 飛機圖標 (旋轉)
         function createPlaneIcon(heading) {
-            // 使用白色飛機圖標更適合暗色背景
+            // 使用白色飛機圖標
             return L.divIcon({
                 className: "plane-icon",
                 html: `<img src="https://api.iconify.design/game-icons:airplane-departure.svg?color=white" 
@@ -144,21 +230,59 @@
                 iconAnchor: [14, 14]
             });
         }
+        
+        // 設置機場標記 (簡化)
+        function addAirportMarkers() {
+            const airports = [
+                { name: "桃園 TPE", lat: 25.08, lon: 121.23 },
+                { name: "松山 TSA", lat: 25.079, lon: 121.554 },
+                { name: "高雄 KHH", lat: 22.56, lon: 120.35 },
+            ];
+            const airportIcon = L.divIcon({
+                className: 'airport-icon',
+                html: `<div style="background:#fff; border-radius:50%; width:8px; height:8px; border:2px solid #64B5F6;"></div>`,
+                iconSize: [12, 12],
+                iconAnchor: [6, 6]
+            });
+
+            airports.forEach(a => {
+                L.marker([a.lat, a.lon], { icon: airportIcon })
+                 .bindTooltip(a.name, { permanent: true, direction: 'right', className: 'airport-label' })
+                 .addTo(map);
+            });
+        }
+        addAirportMarkers();
+
+        // 點擊飛機時顯示右側面板
+        function showDetailPanel(icao24, content) {
+            detailContent.innerHTML = content;
+            detailPanel.classList.add('visible');
+            // 可以自動縮放地圖到該飛機
+            if (flightMarkers[icao24]) {
+                map.flyTo(flightMarkers[icao24].getLatLng(), 10);
+            }
+        }
+        
+        // 關閉右側面板
+        document.getElementById('close-panel').addEventListener('click', () => {
+            detailPanel.classList.remove('visible');
+        });
+
+        // ==========================================================
+        // 數據抓取與處理
+        // ==========================================================
 
         async function fetchFlights() {
-            // 🚨 請檢查這個 Vercel 網址是否正確
-            const PROXY_URL = "https://flight123.vercel.app/api/proxy"; 
-            let url = PROXY_URL;
             
             try {
                 statusText.textContent = `嘗試通過 Vercel 代理更新 OpenSky 數據... (${new Date().toLocaleTimeString('zh-TW')})`;
                 statusText.classList.remove('error');
 
-                let res = await fetch(url);
+                let res = await fetch(PROXY_URL);
 
                 if (!res.ok) {
                     if (res.status === 404) {
-                        throw new Error(`致命錯誤: 404 Not Found. Vercel 代理服務未成功啟動，請重建專案。`);
+                        throw new Error(`致命錯誤: 404 Not Found. Vercel 代理服務未成功啟動，請檢查專案。`);
                     }
                     throw new Error(`HTTP 錯誤: ${res.status}.`);
                 }
@@ -171,7 +295,11 @@
                 let arrivalCount = 0;   
                 let activeFlights = new Set(); 
                 
-                // --- 數據解析邏輯 (OpenSky Network State Vectors) ---
+                // 獲取篩選器值
+                const minAltitudeFt = parseInt(altRange.value);
+                const minVerticalFtMin = parseInt(vsRange.value);
+
+                // --- 數據解析邏輯 ---
                 for (const f of states) {
                     const icao24 = f[0];         
                     const callsign = f[1] ? f[1].trim() : "N/A"; 
@@ -183,15 +311,19 @@
                     const altitude = f[13];      
                     const squawk = f[14] || "----"; 
 
-                    if (lat === null || lon === null) continue;
+                    if (lat === null || lon === null || altitude === null) continue;
                     
-                    const altitudeFt = altitude !== null ? Math.round(altitude * 3.28084) : 'N/A'; 
+                    // 單位轉換
+                    const altitudeFt = Math.round(altitude * 3.28084); 
                     const speedKt = velocity !== null ? Math.round(velocity * 1.94384) : 'N/A';
                     const headingDeg = heading !== null ? Math.round(heading) : 0;
-                    
                     const verticalFtMin = verticalRate !== null ? Math.round(verticalRate * 196.85) : 0; 
 
-                    // 判斷狀態並計數 (使用 ±100 ft/min 閾值)
+                    // 篩選邏輯
+                    if (altitudeFt < minAltitudeFt) continue;
+                    if (Math.abs(verticalFtMin) < minVerticalFtMin) continue;
+
+                    // 判斷狀態並計數
                     if (verticalFtMin > 100) {
                         departureCount++; 
                     } else if (verticalFtMin < -100) {
@@ -203,28 +335,41 @@
 
                     let popupContent = `
                         <b>航班號:</b> ${callsign}<br>
-                        <b>ICAO24:</b> ${icao24}<br>
-                        <b>高度:</b> ${altitudeFt} ft<br>
-                        <b>速度:</b> ${speedKt} kt<br>
-                        <b>垂直速度:</b> ${verticalFtMin} ft/min<br>
-                        <b>航向:</b> ${headingDeg}°<br>
-                        <b>應答機:</b> ${squawk}
+                        <b>高度:</b> ${altitudeFt} ft / <b>速度:</b> ${speedKt} kt<br>
+                        <b>航向:</b> ${headingDeg}° / <b>垂直:</b> ${verticalFtMin} ft/min
                     `;
                     
+                    // 右側詳情面板的內容
+                    const detailHtml = `
+                        <p><b>航班號:</b> ${callsign}</p>
+                        <p><b>ICAO24:</b> ${icao24}</p>
+                        <p><b>應答機 (Squawk):</b> ${squawk}</p>
+                        <p><b>高度:</b> ${altitudeFt} ft</p>
+                        <p><b>速度:</b> ${speedKt} kt</p>
+                        <p><b>航向:</b> ${headingDeg}°</p>
+                        <p><b>垂直速度:</b> ${verticalFtMin} ft/min</p>
+                        <p style="font-size: 11px; margin-top: 15px;">經緯度: ${lat.toFixed(4)}, ${lon.toFixed(4)}</p>
+                    `;
+
                     if (flightMarkers[icao24]) {
+                        // 更新現有標記
                         let marker = flightMarkers[icao24];
                         marker.setLatLng(new L.LatLng(lat, lon)); 
                         marker.setIcon(createPlaneIcon(headingDeg));
-                        marker.setPopupContent(popupContent);
+                        // 更新綁定的點擊事件
+                        marker.off('click').on('click', () => showDetailPanel(icao24, detailHtml));
                     } else {
+                        // 新增標記
                         let marker = L.marker([lat, lon], {icon: createPlaneIcon(headingDeg), title: callsign})
                                          .addTo(map)
-                                         .bindPopup(popupContent);
+                                         .bindPopup(popupContent)
+                                         .on('click', () => showDetailPanel(icao24, detailHtml));
 
                         flightMarkers[icao24] = marker;
                     }
                 }
 
+                // 清理已離場的飛機標記
                 for (let id in flightMarkers) {
                     if (!activeFlights.has(id)) {
                         map.removeLayer(flightMarkers[id]);
@@ -248,12 +393,72 @@
                 arrivalFlightsEl.textContent = 0;
             }
         }
+        
+        // ==========================================================
+        // 事件監聽與控制邏輯
+        // ==========================================================
+        
+        // A. 自動刷新開關邏輯
+        function startFetching() {
+            if (intervalId !== null) return;
+            fetchFlights(); // 立即執行一次
+            intervalId = setInterval(fetchFlights, 15000);
+            statusText.textContent = `數據正在自動更新...`;
+        }
 
-        // 第一次載入
-        fetchFlights();
+        function stopFetching() {
+            if (intervalId !== null) {
+                clearInterval(intervalId);
+                intervalId = null;
+                statusText.textContent = `更新已暫停 (${new Date().toLocaleTimeString('zh-TW')})`;
+                statusText.classList.remove('error');
+            }
+        }
 
-        // 每 15 秒更新一次
-        setInterval(fetchFlights, 15000);
+        toggleButton.addEventListener('change', function() {
+            this.checked ? startFetching() : stopFetching();
+        });
+        
+        // B. 地圖樣式切換邏輯
+        mapStyleToggleBtn.addEventListener('click', () => {
+            if (currentMapStyle === 'standard') {
+                map.removeLayer(mapLayers.standard);
+                mapLayers.dark.addTo(map);
+                currentMapStyle = 'dark';
+                mapStyleToggleBtn.textContent = '切換地圖: 暗色';
+            } else {
+                map.removeLayer(mapLayers.dark);
+                mapLayers.standard.addTo(map);
+                currentMapStyle = 'standard';
+                mapStyleToggleBtn.textContent = '切換地圖: 標準';
+            }
+        });
+        
+        // C. 篩選器值更新及觸發數據重繪
+        altRange.addEventListener('input', () => {
+            altOutput.value = altRange.value;
+            // 篩選器變動後，不重新抓取數據，只重新繪製已有的數據 (為了簡化，我們直接重新抓取)
+            if (intervalId !== null) {
+                // 停止並重新開始，強制更新
+                stopFetching();
+                startFetching();
+            } else {
+                fetchFlights(); // 如果暫停了，手動觸發一次更新
+            }
+        });
+        vsRange.addEventListener('input', () => {
+            vsOutput.value = vsRange.value;
+            if (intervalId !== null) {
+                stopFetching();
+                startFetching();
+            } else {
+                fetchFlights();
+            }
+        });
+
+
+        // 第一次載入時啟動
+        startFetching();
     </script>
 </body>
 </html>
