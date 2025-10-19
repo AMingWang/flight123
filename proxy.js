@@ -1,18 +1,15 @@
-// api/proxy.js (Vercel Serverless Function)
+// api/proxy.js (使用 node-fetch 的完整版本)
+const fetch = require('node-fetch'); // ⬅️ 關鍵修改：導入 node-fetch
 
-// 導入 Node.js 內建的 fetch 函式 (Vercel 環境中可用)
-// 如果使用 Node.js 18 之前的版本或其他環境，可能需要安裝 node-fetch
-const fetch = require('node-fetch');
-
-// OpenSky API URL (臺灣北部邊界)
 const OPENSKY_API_URL = "https://opensky-network.org/api/states/all?lamin=24.5&lomin=120.5&lamax=26.0&lomax=122.0";
 
-// 處理所有來自前端的請求 (GET, POST 等)
+// Vercel Serverless Function 處理函數
 module.exports = async (req, res) => {
-    // 設置 CORS 標頭：允許來自任何來源的請求（解決前端 CORS 問題）
+    // 設置 CORS 標頭，允許來自任何來源的請求（這是解決 CORS 的關鍵）
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Content-Type', 'application/json');
 
     // 處理瀏覽器發出的 OPTIONS 預檢請求
     if (req.method === 'OPTIONS') {
@@ -21,9 +18,7 @@ module.exports = async (req, res) => {
     }
 
     try {
-        console.log('Proxying request to OpenSky...');
-
-        // 伺服器端發起請求，不受瀏覽器 CORS 限制
+        // 伺服器端發起請求，使用導入的 node-fetch
         const response = await fetch(OPENSKY_API_URL);
 
         if (!response.ok) {
