@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0"> 
-    <title>臺灣空域雷達監控 (全球機場版)</title>
+    <title>臺灣空域雷達監控 (高效能全球機場版)</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.4.1/MarkerCluster.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.4.1/MarkerCluster.Default.css" />
@@ -16,7 +16,7 @@
             margin: 0; 
             padding: 0; 
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #f0f0f0; /* 亮色背景以配合亮色地圖 */
+            background-color: #f0f0f0; 
         }
         #map { 
             width: 100%; 
@@ -50,14 +50,14 @@
 
         /* 卡片通用樣式 - 深色主題 */
         .card {
-            background: rgba(30, 30, 30, 0.95); /* 深色背景 */
-            color: #E0E0E0; /* 亮色文字 */
+            background: rgba(30, 30, 30, 0.95); 
+            color: #E0E0E0; 
             padding: 12px 18px;
             border-radius: 8px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
             border: 1px solid #555; 
             line-height: 1.6;
-            width: 280px; /* 大螢幕固定寬度 */
+            width: 280px; 
         }
 
         /* 統計數字樣式 */
@@ -122,7 +122,6 @@
                 padding: 8px 12px;
             }
 
-            /* 左上角容器：移到頂部並佔滿寬度 */
             .info-container-top {
                 top: 5px;
                 left: 0;
@@ -135,7 +134,6 @@
                 box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
             }
             
-            /* 篩選器容器：移動到左上角容器內，並從頁面定位改為相對定位 */
             .filter-container {
                 position: static;
                 margin: 0 10px; 
@@ -147,7 +145,6 @@
                 margin: 5px 0;
             }
 
-            /* 左下角容器：確保狀態卡片在底部 */
             .info-container-bottom {
                 bottom: 5px;
                 left: 0;
@@ -220,7 +217,7 @@
         // 核心配置
         // ==========================================================
         const PROXY_URL = "https://flight123.vercel.app/api/proxy"; 
-        // 使用一個更廣闊的初始視圖來展示全球機場
+        // 恢復到適合看全球的視角
         const INITIAL_VIEW = [20, 120]; 
         const INITIAL_ZOOM = 3;
         
@@ -229,6 +226,7 @@
 
         const mapLayers = {
             standard: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap' }),
+            // ⚠️ 移除 OpenAIP 圖層
         };
         
         // ==========================================================
@@ -252,31 +250,16 @@
                 var className = 'marker-cluster marker-cluster-' + size;
                 var html = '<div><span>' + count + '</span></div>';
 
-                // 自訂樣式，使其更符合深色 UI 主題
                 var style = `
                     background-color: rgba(255, 107, 107, 0.6); 
                     color: #fff;
                     border: 1px solid rgba(255, 255, 255, 0.8);
                     box-shadow: 0 0 5px rgba(0,0,0,0.5);
                 `;
-                if (size === 'Medium') {
-                    style = `
-                        background-color: rgba(255, 107, 107, 0.7); 
-                        color: #fff;
-                        border: 1px solid rgba(255, 255, 255, 0.8);
-                        box-shadow: 0 0 5px rgba(0,0,0,0.5);
-                    `;
-                } else if (size === 'Large') {
-                    style = `
-                        background-color: rgba(255, 107, 107, 0.8);
-                        color: #fff;
-                        border: 1px solid rgba(255, 255, 255, 0.8);
-                        box-shadow: 0 0 5px rgba(0,0,0,0.5);
-                    `;
-                }
+                // 由於 CSS 樣式在 HTML 文件的 <style> 標籤中定義，這裡無需在 JS 中重複設定
+                // 但為了 Leaflet 正常渲染，我們保持 iconCreateFunction 的結構。
 
-
-                return L.divIcon({ html: html, className: className, iconSize: new L.Point(40, 40), style: style });
+                return L.divIcon({ html: html, className: className, iconSize: new L.Point(40, 40)});
             }
         });
         map.addLayer(airportMarkersCluster);
@@ -308,7 +291,7 @@
         }
         
         // ==========================================================
-        // 全球機場標記載入
+        // 全球機場標記載入 (恢復)
         // ==========================================================
         async function loadGlobalAirports() {
             airportStatusEl.textContent = `機場資訊：正在載入...`;
@@ -334,7 +317,7 @@
                     const lat = data.lat;
                     const lon = data.lon;
 
-                    // 過濾掉沒有 IATA 代碼的小型機場，以確保顯示的是重要機場
+                    // 只顯示有 IATA 代碼的重要機場 (約 14k 個)
                     if (data.iata && data.iata !== '\\N' && lat && lon) {
                         const popupContent = `
                             <b>${data.name}</b><br>
@@ -365,11 +348,11 @@
 
 
         // ==========================================================
-        // 航班數據抓取與處理
+        // 航班數據抓取與處理 (保持邏輯不變)
         // ==========================================================
 
         async function fetchFlights() {
-            
+            // ... (fetchFlights 函數保持與前一版本一致) ...
             try {
                 statusText.textContent = `嘗試通過 Vercel 代理更新 OpenSky 數據... (${new Date().toLocaleTimeString('zh-TW')})`;
                 statusText.classList.remove('error');
