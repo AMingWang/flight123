@@ -17,18 +17,23 @@
             height: 100vh; 
             z-index: 1; 
         }
-        /* 核心資訊面板樣式 (獨立 UI) */
-        .info-container {
+        /* 統計卡片的容器 (左上角) */
+        .info-container-top {
             position: absolute;
             top: 15px;
             left: 15px;
             z-index: 1000;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
         }
 
-        /* 統計卡片 - 暗色主題 */
+        /* 狀態訊息卡片的容器 (左下角) ⬅️ 新增定位 */
+        .info-container-bottom {
+            position: absolute;
+            bottom: 15px; /* 底部邊距 */
+            left: 15px;  /* 左側邊距 */
+            z-index: 1000;
+        }
+
+        /* 統計卡片 - 暗色主題 (左上角) */
         .stats-card {
             background: rgba(45, 45, 45, 0.95);
             color: #E0E0E0;
@@ -39,7 +44,7 @@
             border: 1px solid #555;
         }
 
-        /* 狀態訊息卡片 - 暗色主題 */
+        /* 狀態訊息卡片 - 暗色主題 (左下角) */
         .status-card {
             background: rgba(45, 45, 45, 0.95);
             color: #B0B0B0;
@@ -49,6 +54,8 @@
             font-size: 13px;
             border: 1px solid #555;
             font-weight: normal;
+            /* 調整寬度以適應內容 */
+            max-width: 450px; 
         }
         
         .error {
@@ -87,7 +94,7 @@
 <body>
     <div id="map"></div>
     
-    <div class="info-container">
+    <div class="info-container-top">
         <div class="stats-card">
             <h3>空域實時統計</h3>
             <span class="count-label total">總航班數 (Total):</span>
@@ -97,7 +104,9 @@
             <span class="count-label arrival">正在抵達 (Descending):</span>
             <span id="arrival-flights" class="count-number arrival">0</span>
         </div>
-        
+    </div>
+    
+    <div class="info-container-bottom">
         <div class="status-card" id="status-info">
             臺灣空域航班監控（數據通過 Vercel 代理自 OpenSky Network 獲取）
             <div class="status-text">載入中...</div>
@@ -110,7 +119,7 @@
         // 設定地圖中心在桃園機場附近，Zoom level 9
         var map = L.map('map').setView([25.08, 121.23], 9); 
         
-        // ✅ 修正：換回最穩定的 OpenStreetMap 標準圖層
+        // 換回最穩定的 OpenStreetMap 標準圖層
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 18,
             attribution: '© OpenStreetMap'
@@ -148,7 +157,6 @@
                 let res = await fetch(url);
 
                 if (!res.ok) {
-                    // 檢查 Vercel 代理是否返回 404
                     if (res.status === 404) {
                         throw new Error(`致命錯誤: 404 Not Found. Vercel 代理服務未成功啟動，請重建專案。`);
                     }
