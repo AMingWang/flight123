@@ -5,7 +5,7 @@
     <title>臺灣空域雷達監控 (Vercel 代理版)</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <style>
-        /* 樣式部分保持不變 */
+        /* 樣式部分 */
         body { 
             margin: 0; 
             padding: 0; 
@@ -16,6 +16,7 @@
             height: 100vh; 
             z-index: 1; 
         }
+        /* 新增：Info 容器 */
         .info {
             position: absolute;
             top: 10px;
@@ -27,6 +28,7 @@
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
             z-index: 1000;
             font-weight: bold;
+            line-height: 1.6; /* 調整行高 */
         }
         .error {
             color: darkred;
@@ -36,12 +38,35 @@
             transform-origin: center center;
             cursor: pointer;
         }
+        /* 新增：統計數字樣式 */
+        .count-label {
+            display: inline-block;
+            width: 120px;
+            font-weight: normal;
+        }
+        .count-number {
+            font-size: 16px;
+            font-weight: bold;
+            margin-left: 5px;
+        }
+        .arrival { color: darkgreen; }
+        .departure { color: darkblue; }
+        .total { color: #333; }
+
     </style>
 </head>
 <body>
     <div id="map"></div>
     <div class="info" id="status-info">
         臺灣空域航班監控（數據通過 **您的 Vercel 代理** 自 OpenSky Network 獲取）
+        <div class="summary">
+            <span class="count-label total">總航班數:</span>
+            <span id="total-flights" class="count-number total">0</span><br>
+            <span class="count-label departure">正在離場 (爬升):</span>
+            <span id="departure-flights" class="count-number departure">0</span><br>
+            <span class="count-label arrival">正在抵達 (下降):</span>
+            <span id="arrival-flights" class="count-number arrival">0</span>
+        </div>
         <div class="status-text">載入中...</div>
     </div>
 
@@ -58,13 +83,19 @@
 
         var flightMarkers = {};
         var statusText = document.getElementById('status-info').querySelector('.status-text');
+        
+        // 獲取統計 UI 元素
+        var totalFlightsEl = document.getElementById('total-flights');
+        var departureFlightsEl = document.getElementById('departure-flights');
+        var arrivalFlightsEl = document.getElementById('arrival-flights');
+
 
         // 飛機圖標 (旋轉)
         function createPlaneIcon(heading) {
             return L.divIcon({
                 className: "plane-icon",
                 html: `<img src="https://cdn-icons-png.flaticon.com/512/860/860818.png" 
-                           style="width:28px; height: 28px; transform: rotate(${heading}deg);">`,
+                               style="width:28px; height: 28px; transform: rotate(${heading}deg);">`,
                 iconSize: [28, 28],
                 iconAnchor: [14, 14]
             });
@@ -74,7 +105,7 @@
          * 抓取航班資料的異步函數 (使用 Vercel 代理 OpenSky)
          */
         async function fetchFlights() {
-            // 🚨 這是最終的 Vercel 代理網址，已經替換
+            // 🚨 請確認您的 Vercel 網址是否正確
             const PROXY_URL = "https://flight123.vercel.app/api/proxy"; 
             let url = PROXY_URL;
             
@@ -93,18 +124,21 @@
                 
                 const states = data.states || [];
                 let flightCount = 0;
+                let departureCount = 0; // 新增：離場計數
+                let arrivalCount = 0;   // 新增：抵達計數
                 let activeFlights = new Set(); 
                 
                 // --- 數據解析邏輯 (OpenSky Network State Vectors) ---
                 for (const f of states) {
                     // OpenSky State Vector 索引：
-                    const icao24 = f[0];        // icao24 (唯一 ID)
+                    const icao24 = f[0];         // icao24 (唯一 ID)
                     const callsign = f[1] ? f[1].trim() : "N/A"; // 呼號/航班號 (索引 1)
-                    const lon = f[5];           // 經度 (索引 5)
-                    const lat = f[6];           // 緯度 (索引 6)
-                    const velocity = f[9];      // 地速 (m/s) (索引 9)
-                    const heading = f[10];      // 航向 (度) (索引 10)
-                    const altitude = f[13];     // 氣壓高度 (m) (索引 13)
+                    const lon = f[5];            // 經度 (索引 5)
+                    const lat = f[6];            // 緯度 (索引 6)
+                    const velocity = f[9];       // 地速 (m/s) (索引 9)
+                    const heading = f[10];       // 航向 (度) (索引 10)
+                    const verticalRate = f[11];  // 垂直速度 (m/s) (索引 11) ⬅️ 新增：垂直速度
+                    const altitude = f[13];      // 氣壓高度 (m) (索引 13)
                     const squawk = f[14] || "----"; // 應答機
 
                     if (lat === null || lon === null) continue;
@@ -114,6 +148,16 @@
                     const speedKt = velocity !== null ? Math.round(velocity * 1.94384) : 'N/A'; // 公尺/秒轉節
                     const headingDeg = heading !== null ? Math.round(heading) : 0;
                     
+                    // 垂直速度轉換 (m/s -> ft/min)
+                    const verticalFtMin = verticalRate !== null ? Math.round(verticalRate * 196.85) : 0; 
+
+                    // 判斷狀態並計數
+                    if (verticalFtMin > 100) {
+                        departureCount++; // 正在爬升 (離場)
+                    } else if (verticalFtMin < -100) {
+                        arrivalCount++;   // 正在下降 (抵達)
+                    }
+
                     activeFlights.add(icao24);
                     flightCount++;
 
@@ -122,6 +166,7 @@
                         <b>ICAO24:</b> ${icao24}<br>
                         <b>高度:</b> ${altitudeFt} ft<br>
                         <b>速度:</b> ${speedKt} kt<br>
+                        <b>垂直速度:</b> ${verticalFtMin} ft/min<br>
                         <b>航向:</b> ${headingDeg}°<br>
                         <b>應答機:</b> ${squawk}
                     `;
@@ -135,8 +180,8 @@
                     } else {
                         // 新增標記
                         let marker = L.marker([lat, lon], {icon: createPlaneIcon(headingDeg), title: callsign})
-                                     .addTo(map)
-                                     .bindPopup(popupContent);
+                                         .addTo(map)
+                                         .bindPopup(popupContent);
 
                         flightMarkers[icao24] = marker;
                     }
@@ -150,11 +195,15 @@
                     }
                 }
                 
+                // 更新 UI 統計數據
+                totalFlightsEl.textContent = flightCount;
+                departureFlightsEl.textContent = departureCount;
+                arrivalFlightsEl.textContent = arrivalCount;
                 statusText.textContent = `成功載入 ${flightCount} 筆航班資訊 (${new Date().toLocaleTimeString('zh-TW')})`;
 
             } catch (err) {
                 console.error("抓取航班資料失敗", err);
-                statusText.textContent = "數據更新失敗：請檢查 Vercel 代理服務是否正確部署。";
+                statusText.textContent = `數據更新失敗：${err.message.substring(0, 80)}...`;
                 statusText.classList.add('error');
             }
         }
