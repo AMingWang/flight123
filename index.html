@@ -2,138 +2,169 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>桃園機場航班雷達</title>
+    <title>桃園機場航班雷達 (OpenSky)</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <style>
-        /* 保持原有的基本樣式 */
-        body { margin:0; padding:0; }
-        #map { width: 100%; height: 100vh; }
+        /* 基礎樣式：讓地圖充滿整個視窗 */
+        body { 
+            margin: 0; 
+            padding: 0; 
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+        }
+        #map { 
+            width: 100%; 
+            height: 100vh; 
+            z-index: 1; 
+        }
+        /* 資訊浮動面板樣式 */
         .info {
             position: absolute;
             top: 10px;
             left: 10px;
-            background: white;
-            padding: 8px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 10px 15px;
             font-size: 14px;
-            border-radius: 4px;
-            box-shadow: 0 0 5px rgba(0,0,0,0.3);
-            z-index: 1000; /* 確保在地圖上方 */
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+            font-weight: bold;
         }
-        /* 飛機圖標 (為了讓 transform-origin 生效) */
+        .error {
+            color: darkred;
+            font-weight: bold;
+        }
+        /* 飛機圖標容器，確保旋轉中心正確 */
         .plane-icon {
             transform-origin: center center;
-            /* 調整 icon 讓 pop-up 更好點擊 */
-            cursor: pointer; 
+            cursor: pointer;
         }
     </style>
 </head>
 <body>
     <div id="map"></div>
-    <div class="info">桃園國際機場航班監控（FlightRadar24 資料，每 15 秒更新）</div>
+    <div class="info" id="status-info">
+        桃園國際機場航班監控（OpenSky Network / 每 15 秒更新）
+        <div class="status-text">載入中...</div>
+    </div>
 
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script>
         // 設定地圖中心在桃園機場附近，Zoom level 9
         var map = L.map('map').setView([25.08, 121.23], 9); 
-
-        // OSM 圖層
+        
+        // OpenStreetMap Tile Layer
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 18,
             attribution: '© OpenStreetMap'
         }).addTo(map);
 
-        // 用來儲存地圖上現有的飛機標記物件
         var flightMarkers = {};
+        var infoPanel = document.getElementById('status-info');
+        var statusText = infoPanel.querySelector('.status-text');
 
-        // 飛機圖標的基礎 HTML 結構
+        // 飛機圖標 (旋轉)
         function createPlaneIcon(heading) {
             return L.divIcon({
                 className: "plane-icon",
                 html: `<img src="https://cdn-icons-png.flaticon.com/512/860/860818.png" 
-                           style="width:28px; transform: rotate(${heading}deg);">`,
+                           style="width:28px; height: 28px; transform: rotate(${heading}deg);">`,
                 iconSize: [28, 28],
                 iconAnchor: [14, 14]
             });
         }
 
-        // 抓 FlightRadar24 的 JSON (注意：此 URL 在瀏覽器前端可能因 CORS 失敗)
+        /**
+         * 抓取航班資料的異步函數 (使用 OpenSky Network API)
+         */
         async function fetchFlights() {
-            // ************ CORS 問題提醒：這行可能會失敗！ ************
-            // 請將此 URL 替換為你自己的後端代理伺服器 URL。
-            let url = "https://data-live.flightradar24.com/zones/fcgi/feed.js?bounds=25.5,24.8,121.7,121.0";
-            // *********************************************************
+            // OpenSky API URL: states/all 端點 + 臺灣北部邊界 (緯度 24.5 - 25.5, 經度 120.5 - 122.0)
+            // lamin (min lat): 24.5, lomin (min lon): 120.5
+            // lamax (max lat): 26.0, lomax (max lon): 122.0
+            // ❗ 警告：此 URL 預計會因 CORS 錯誤在瀏覽器中失敗 ❗
+            let url = "https://opensky-network.org/api/states/all?lamin=24.5&lomin=120.5&lamax=26.0&lomax=122.0";
             
             try {
+                statusText.textContent = "更新中...";
+                statusText.classList.remove('error');
+
                 let res = await fetch(url);
                 if (!res.ok) {
-                     // 建議：如果 CORS 失敗，可以在這裡輸出提示
-                     throw new Error(`HTTP 錯誤! 狀態碼: ${res.status}. 可能是 CORS 限制導致。`);
+                     throw new Error(`HTTP 錯誤: ${res.status}。可能為 CORS 限制！`);
                 }
                 let data = await res.json();
-
-                // 準備一個陣列來追蹤本次更新後仍存在的飛機 ID
+                
+                let flightCount = 0;
                 let activeFlights = new Set(); 
+                
+                // OpenSky 的數據在 'states' 屬性中，且是一個二維陣列
+                const states = data.states || [];
 
-                // 迴圈處理新的航班資料
-                for (let id in data) {
-                    // 忽略 meta 數據
-                    if (id === 'full_count' || id === 'version') continue; 
+                for (const f of states) {
+                    // OpenSky State Vector 索引對應：
+                    const icao24 = f[0];        // icao24 地址 (唯一 ID)
+                    const callsign = f[5] ? f[5].trim() : "N/A"; // 呼號/航班號 (索引 5)
+                    const lon = f[5];           // 經度 (索引 5)
+                    const lat = f[6];           // 緯度 (索引 6)
+                    const velocity = f[9];      // 地速 (m/s) (索引 9)
+                    const heading = f[10];      // 航向 (度) (索引 10)
+                    const altitude = f[13];     // 氣壓高度 (m) (索引 13)
+                    const squawk = f[14] || "----"; // 應答機 (索引 14)
 
-                    let f = data[id]; // 航班資料陣列
-
-                    let lat = f[1];
-                    let lon = f[2];
-                    let callsign = f[16] || f[18] || "N/A"; // f[18] 可能是註冊號
-                    let heading = f[3] || 0; 
-                    let altitude = f[4] || 0; 
-                    let squawk = f[6] || "----"; 
+                    // 僅處理有有效經緯度的數據
+                    if (lat === null || lon === null) continue;
                     
-                    activeFlights.add(id); // 標記為活躍
+                    // 將單位轉換為常見航空單位
+                    const altitudeFt = altitude !== null ? Math.round(altitude * 3.28084) : 'N/A'; // 公尺轉英呎
+                    const speedKt = velocity !== null ? Math.round(velocity * 1.94384) : 'N/A'; // 公尺/秒轉節
+                    const headingDeg = heading !== null ? Math.round(heading) : 0; // 航向取整數
+                    
+                    activeFlights.add(icao24);
+                    flightCount++;
 
                     let popupContent = `
                         <b>航班號:</b> ${callsign}<br>
-                        <b>高度:</b> ${altitude} ft<br>
-                        <b>航向:</b> ${heading}°<br>
+                        <b>ICAO24:</b> ${icao24}<br>
+                        <b>高度:</b> ${altitudeFt} ft<br>
+                        <b>速度:</b> ${speedKt} kt<br>
+                        <b>航向:</b> ${headingDeg}°<br>
                         <b>應答機:</b> ${squawk}
                     `;
                     
-                    if (flightMarkers[id]) {
-                        // 情況 1: 標記已存在 (更新位置和資訊)
-                        let marker = flightMarkers[id];
-                        let newLatLng = new L.LatLng(lat, lon);
+                    if (flightMarkers[icao24]) {
+                        // 標記已存在：更新位置、旋轉角度和 Pop-up 內容
+                        let marker = flightMarkers[icao24];
+                        marker.setLatLng(new L.LatLng(lat, lon)); 
                         
-                        // 移動標記
-                        marker.setLatLng(newLatLng); 
-                        
-                        // 更新飛機圖標的旋轉角度
-                        let newIcon = createPlaneIcon(heading);
+                        let newIcon = createPlaneIcon(headingDeg);
                         marker.setIcon(newIcon);
 
-                        // 更新 Pop-up 內容
                         marker.setPopupContent(popupContent);
                     } else {
-                        // 情況 2: 標記不存在 (新增)
-                        let icon = createPlaneIcon(heading);
+                        // 標記不存在：新增
+                        let icon = createPlaneIcon(headingDeg);
                         let marker = L.marker([lat, lon], {icon: icon, title: callsign})
                                      .addTo(map)
                                      .bindPopup(popupContent);
 
-                        flightMarkers[id] = marker;
+                        flightMarkers[icao24] = marker;
                     }
                 }
 
-                // 清理舊標記 (已經不在新數據中的飛機)
+                // 清理已離場或消失的飛機標記
                 for (let id in flightMarkers) {
                     if (!activeFlights.has(id)) {
                         map.removeLayer(flightMarkers[id]);
                         delete flightMarkers[id];
                     }
                 }
-
+                
+                statusText.textContent = `成功載入 ${flightCount} 筆航班資訊 (${new Date().toLocaleTimeString('zh-TW')})`;
+            
             } catch (err) {
-                console.error("抓取航班資料失敗或發生 CORS 錯誤", err);
-                // 可以在這裡更新 .info 區塊，通知使用者發生錯誤
-                document.querySelector('.info').textContent = "數據更新失敗 (可能因 CORS 限制)，請檢查控制台。";
+                console.error("抓取航班資料失敗", err);
+                statusText.textContent = "數據更新失敗：請檢查 CORS 設置或網路連接。";
+                statusText.classList.add('error');
             }
         }
 
