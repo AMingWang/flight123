@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>桃園機場航班雷達 (FR24 AllOrigins 代理版)</title>
+    <title>臺灣空域雷達監控 (OpenSky AllOrigins 代理版)</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <style>
         /* 樣式部分保持不變 */
@@ -41,14 +41,16 @@
 <body>
     <div id="map"></div>
     <div class="info" id="status-info">
-        桃園國際機場航班監控（數據通過 AllOrigins 代理自 FlightRadar24）
+        臺灣空域航班監控（數據通過 AllOrigins 代理自 OpenSky Network）
         <div class="status-text">載入中...</div>
     </div>
 
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script>
+        // 設定地圖中心在桃園機場附近，Zoom level 9
         var map = L.map('map').setView([25.08, 121.23], 9); 
         
+        // OpenStreetMap Tile Layer
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 18,
             attribution: '© OpenStreetMap'
@@ -57,6 +59,7 @@
         var flightMarkers = {};
         var statusText = document.getElementById('status-info').querySelector('.status-text');
 
+        // 飛機圖標 (旋轉)
         function createPlaneIcon(heading) {
             return L.divIcon({
                 className: "plane-icon",
@@ -68,60 +71,64 @@
         }
 
         /**
-         * 抓取航班資料的異步函數 (使用 AllOrigins 代理 FR24)
+         * 抓取航班資料的異步函數 (使用 AllOrigins 代理 OpenSky)
          */
         async function fetchFlights() {
-            // 原始 FR24 API URL (臺灣北部邊界: 25.5,24.8,121.7,121.0)
-            const FR24_API_URL = "https://data-live.flightradar24.com/zones/fcgi/feed.js?bounds=25.5,24.8,121.7,121.0";
+            // OpenSky API URL (臺灣北部邊界: lamin=24.5&lomin=120.5&lamax=26.0&lomax=122.0)
+            const OPENSKY_API_URL = "https://opensky-network.org/api/states/all?lamin=24.5&lomin=120.5&lamax=26.0&lomax=122.0";
             
-            // ⚠️ 這是關鍵！將 FR24 URL 包裹在 AllOrigins 代理中
-            // 該服務的網址需要進行 URI 編碼
-            const ENCODED_URL = encodeURIComponent(FR24_API_URL);
+            // ⚠️ 這是關鍵！將 OpenSky URL 包裹在 AllOrigins 代理中
+            const ENCODED_URL = encodeURIComponent(OPENSKY_API_URL);
             const PROXY_BASE = "https://api.allorigins.win/get?url=";
             let url = PROXY_BASE + ENCODED_URL;
             
             try {
-                statusText.textContent = `嘗試通過 AllOrigins 代理更新 FR24 數據... (${new Date().toLocaleTimeString('zh-TW')})`;
+                statusText.textContent = `嘗試通過 AllOrigins 代理更新 OpenSky 數據... (${new Date().toLocaleTimeString('zh-TW')})`;
                 statusText.classList.remove('error');
 
                 let res = await fetch(url);
 
                 if (!res.ok) {
-                    throw new Error(`HTTP 錯誤: ${res.status}. (AllOrigins 代理或 FR24 服務異常)`);
+                    throw new Error(`HTTP 錯誤: ${res.status}. (AllOrigins 代理服務異常)`);
                 }
                 
                 // AllOrigins 返回的數據結構是 { contents: "...", status: { ... } }
                 const proxyData = await res.json();
                 
-                // 解析出實際的 FR24 JSON 字符串
+                // OpenSky 的數據是 JSON 字符串，需要二次解析
                 if (!proxyData.contents) {
                     throw new Error("代理響應結構錯誤或內容為空。");
                 }
                 
-                // FR24 的數據是 JSON 字符串，需要二次解析
-                let data = JSON.parse(proxyData.contents);
-                
+                let data;
+                try {
+                    data = JSON.parse(proxyData.contents);
+                } catch (e) {
+                    throw new Error("無法解析 OpenSky 返回的內容。");
+                }
+
+                const states = data.states || [];
                 let flightCount = 0;
                 let activeFlights = new Set(); 
+                
+                // --- 數據解析邏輯 (OpenSky Network State Vectors) ---
+                for (const f of states) {
+                    // OpenSky State Vector 索引：
+                    const icao24 = f[0];        // icao24 (唯一 ID)
+                    const callsign = f[1] ? f[1].trim() : "N/A"; // 呼號/航班號 (索引 1)
+                    const lon = f[5];           // 經度 (索引 5)
+                    const lat = f[6];           // 緯度 (索引 6)
+                    const velocity = f[9];      // 地速 (m/s) (索引 9)
+                    const heading = f[10];      // 航向 (度) (索引 10)
+                    const altitude = f[13];     // 氣壓高度 (m) (索引 13)
+                    const squawk = f[14] || "----"; // 應答機
 
-                // 移除不需要的 meta keys
-                delete data.full_count;
-                delete data.version;
-
-                // --- 數據解析邏輯 (使用 FR24 的陣列格式) ---
-                for (let id in data) {
-                    let f = data[id]; 
-                    
-                    const icao24 = id;
-                    const lat = f[1];             // 緯度
-                    const lon = f[2];             // 經度
-                    const heading = f[3] || 0;    // 航向
-                    const altitude = f[4] || 0;   // 高度 (英呎 - ft)
-                    const speed = f[5] || 0;      // 地速 (節 - kt)
-                    const squawk = f[6] || "----";// 應答機
-                    const callsign = f[16] || "N/A"; // 航班號
-                    
                     if (lat === null || lon === null) continue;
+                    
+                    // 單位轉換
+                    const altitudeFt = altitude !== null ? Math.round(altitude * 3.28084) : 'N/A'; // 公尺轉英呎
+                    const speedKt = velocity !== null ? Math.round(velocity * 1.94384) : 'N/A'; // 公尺/秒轉節
+                    const headingDeg = heading !== null ? Math.round(heading) : 0;
                     
                     activeFlights.add(icao24);
                     flightCount++;
@@ -129,9 +136,9 @@
                     let popupContent = `
                         <b>航班號:</b> ${callsign}<br>
                         <b>ICAO24:</b> ${icao24}<br>
-                        <b>高度:</b> ${altitude} ft<br>
-                        <b>速度:</b> ${speed} kt<br>
-                        <b>航向:</b> ${heading}°<br>
+                        <b>高度:</b> ${altitudeFt} ft<br>
+                        <b>速度:</b> ${speedKt} kt<br>
+                        <b>航向:</b> ${headingDeg}°<br>
                         <b>應答機:</b> ${squawk}
                     `;
                     
@@ -139,11 +146,11 @@
                         // 更新現有標記
                         let marker = flightMarkers[icao24];
                         marker.setLatLng(new L.LatLng(lat, lon)); 
-                        marker.setIcon(createPlaneIcon(heading));
+                        marker.setIcon(createPlaneIcon(headingDeg));
                         marker.setPopupContent(popupContent);
                     } else {
                         // 新增標記
-                        let marker = L.marker([lat, lon], {icon: createPlaneIcon(heading), title: callsign})
+                        let marker = L.marker([lat, lon], {icon: createPlaneIcon(headingDeg), title: callsign})
                                      .addTo(map)
                                      .bindPopup(popupContent);
 
@@ -163,8 +170,7 @@
             
             } catch (err) {
                 console.error("抓取航班資料失敗", err);
-                // 數據更新失敗時的錯誤訊息，提醒用戶檢查代理狀態
-                statusText.textContent = "數據更新失敗：AllOrigins 代理服務或 FR24 API 無法訪問。";
+                statusText.textContent = "數據更新失敗：AllOrigins 代理服務或 OpenSky API 無法訪問。";
                 statusText.classList.add('error');
             }
         }
