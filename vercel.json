@@ -1,7 +1,7 @@
 {
   "functions": {
-    "api/proxy": { 
-      "runtime": "@vercel/node@20.9.0" 
+    "api/*.js": { 
+      "runtime": "@vercel/node@20.x" 
     }
   },
   "rewrites": [
