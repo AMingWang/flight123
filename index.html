@@ -2,10 +2,10 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>臺灣空域雷達監控 (暗色模式)</title>
+    <title>臺灣空域雷達監控 (修復地圖圖層)</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <style>
-        /* 暗色模式基礎樣式 */
+        /* 樣式部分保持不變 - 暗色 UI 樣式 */
         body { 
             margin: 0; 
             padding: 0; 
@@ -23,20 +23,20 @@
             top: 15px;
             left: 15px;
             z-index: 1000;
-            display: flex; /* 使用 Flexbox 讓統計和狀態並排或堆疊 */
-            flex-direction: column; /* 垂直堆疊 */
+            display: flex;
+            flex-direction: column;
             gap: 10px;
         }
 
         /* 統計卡片 - 暗色主題 */
         .stats-card {
-            background: rgba(45, 45, 45, 0.95); /* 深灰背景 */
-            color: #E0E0E0; /* 淺色文字 */
+            background: rgba(45, 45, 45, 0.95);
+            color: #E0E0E0;
             padding: 12px 18px;
             border-radius: 8px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
             font-size: 14px;
-            border: 1px solid #555; /* 細微邊框 */
+            border: 1px solid #555;
         }
 
         /* 狀態訊息卡片 - 暗色主題 */
@@ -52,7 +52,7 @@
         }
         
         .error {
-            color: #FF6B6B; /* 鮮紅色錯誤提示 */
+            color: #FF6B6B;
             font-weight: bold;
         }
         
@@ -68,9 +68,9 @@
             font-weight: bold;
             margin-left: 5px;
         }
-        .arrival { color: #81C784; } /* 柔和綠色 */
-        .departure { color: #64B5F6; } /* 柔和藍色 */
-        .total { color: #FFD54F; } /* 琥珀色 */
+        .arrival { color: #81C784; }
+        .departure { color: #64B5F6; }
+        .total { color: #FFD54F; }
         .plane-icon {
             transform-origin: center center;
             cursor: pointer;
@@ -82,7 +82,6 @@
             font-size: 16px;
             color: #F5F5F5;
         }
-
     </style>
 </head>
 <body>
@@ -111,11 +110,10 @@
         // 設定地圖中心在桃園機場附近，Zoom level 9
         var map = L.map('map').setView([25.08, 121.23], 9); 
         
-        // 🚨 暗色地圖圖層 (Stadia Alidade Smooth Dark)
-        L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png', {
-            maxZoom: 20,
-            attribution: '© <a href="https://stadiamaps.com/">Stadia Maps</a>, © <a href="https://openmaptiles.org/">OpenMapTiles</a> © <a href="http://openstreetmap.org">OpenStreetMap</a> contributors',
-            subdomains: 'abcd'
+        // ✅ 修正：換回最穩定的 OpenStreetMap 標準圖層
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 18,
+            attribution: '© OpenStreetMap'
         }).addTo(map);
 
         var flightMarkers = {};
@@ -139,7 +137,7 @@
         }
 
         async function fetchFlights() {
-            // 🚨 請確認您的 Vercel 網址是否正確
+            // 🚨 請檢查這個 Vercel 網址是否正確
             const PROXY_URL = "https://flight123.vercel.app/api/proxy"; 
             let url = PROXY_URL;
             
@@ -150,7 +148,11 @@
                 let res = await fetch(url);
 
                 if (!res.ok) {
-                    throw new Error(`HTTP 錯誤: ${res.status}. (請檢查 Vercel 代理服務是否正常運行)`);
+                    // 檢查 Vercel 代理是否返回 404
+                    if (res.status === 404) {
+                        throw new Error(`致命錯誤: 404 Not Found. Vercel 代理服務未成功啟動，請重建專案。`);
+                    }
+                    throw new Error(`HTTP 錯誤: ${res.status}.`);
                 }
                 
                 let data = await res.json();
@@ -169,25 +171,23 @@
                     const lat = f[6];            
                     const velocity = f[9];       
                     const heading = f[10];       
-                    const verticalRate = f[11];  // 垂直速度 (m/s)
+                    const verticalRate = f[11];  
                     const altitude = f[13];      
                     const squawk = f[14] || "----"; 
 
                     if (lat === null || lon === null) continue;
                     
-                    // 單位轉換
-                    const altitudeFt = altitude !== null ? Math.round(altitude * 3.28084) : 'N/A'; // 公尺轉英呎
-                    const speedKt = velocity !== null ? Math.round(velocity * 1.94384) : 'N/A'; // 公尺/秒轉節
+                    const altitudeFt = altitude !== null ? Math.round(altitude * 3.28084) : 'N/A'; 
+                    const speedKt = velocity !== null ? Math.round(velocity * 1.94384) : 'N/A';
                     const headingDeg = heading !== null ? Math.round(heading) : 0;
                     
-                    // 垂直速度轉換 (m/s -> ft/min)
                     const verticalFtMin = verticalRate !== null ? Math.round(verticalRate * 196.85) : 0; 
 
                     // 判斷狀態並計數 (使用 ±100 ft/min 閾值)
                     if (verticalFtMin > 100) {
-                        departureCount++; // 正在爬升 (離場)
+                        departureCount++; 
                     } else if (verticalFtMin < -100) {
-                        arrivalCount++;   // 正在下降 (抵達)
+                        arrivalCount++;   
                     }
 
                     activeFlights.add(icao24);
@@ -204,13 +204,11 @@
                     `;
                     
                     if (flightMarkers[icao24]) {
-                        // 更新現有標記
                         let marker = flightMarkers[icao24];
                         marker.setLatLng(new L.LatLng(lat, lon)); 
                         marker.setIcon(createPlaneIcon(headingDeg));
                         marker.setPopupContent(popupContent);
                     } else {
-                        // 新增標記
                         let marker = L.marker([lat, lon], {icon: createPlaneIcon(headingDeg), title: callsign})
                                          .addTo(map)
                                          .bindPopup(popupContent);
@@ -219,7 +217,6 @@
                     }
                 }
 
-                // 清理已離場的飛機標記
                 for (let id in flightMarkers) {
                     if (!activeFlights.has(id)) {
                         map.removeLayer(flightMarkers[id]);
@@ -235,10 +232,9 @@
 
             } catch (err) {
                 console.error("抓取航班資料失敗", err);
-                statusText.textContent = `數據更新失敗：${err.message.substring(0, 80)}...`;
+                statusText.textContent = `數據更新失敗：${err.message}`;
                 statusText.classList.add('error');
                 
-                // 清空計數器
                 totalFlightsEl.textContent = 0;
                 departureFlightsEl.textContent = 0;
                 arrivalFlightsEl.textContent = 0;
