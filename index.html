@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>桃園機場航班雷達</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <style>
+    body { margin:0; padding:0; }
+    #map { width: 100%; height: 100vh; }
+    .info {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: white;
+      padding: 8px;
+      font-size: 14px;
+      border-radius: 4px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.3);
+    }
+    .plane-icon {
+      transform-origin: center;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div class="info">桃園國際機場航班監控（FlightRadar24 資料，每 15 秒更新）</div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script>
+    var map = L.map('map').setView([25.08, 121.23], 9);
+
+    // OSM 圖層
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18,
+      attribution: '© OpenStreetMap'
+    }).addTo(map);
+
+    var flightMarkers = {};
+
+    // 抓 FlightRadar24 的 JSON
+    async function fetchFlights() {
+      let url = "https://data-live.flightradar24.com/zones/fcgi/feed.js?bounds=25.5,24.8,121.7,121.0";
+
+      try {
+        let res = await fetch(url);
+        let data = await res.json();
+
+        // 移除不需要的 keys
+        delete data.full_count;
+        delete data.version;
+
+        // 清空舊標記
+        for (let id in flightMarkers) {
+          map.removeLayer(flightMarkers[id]);
+        }
+        flightMarkers = {};
+
+        // 建立新標記
+        for (let id in data) {
+          let f = data[id]; // 航班資料陣列
+
+          let lat = f[1];
+          let lon = f[2];
+          let callsign = f[16] || "Unknown";  // 航班號
+          let heading = f[3] || 0;            // 航向
+          let altitude = f[4] || 0;           // 高度
+          let squawk = f[6] || "----";        // 應答機
+
+          // 飛機圖標 (旋轉)
+          let icon = L.divIcon({
+            className: "plane-icon",
+            html: `<img src="https://cdn-icons-png.flaticon.com/512/860/860818.png" 
+                        style="width:28px; transform: rotate(${heading}deg);">`,
+            iconSize: [28, 28],
+            iconAnchor: [14, 14]
+          });
+
+          let marker = L.marker([lat, lon], {icon: icon})
+            .addTo(map)
+            .bindPopup(`
+              <b>航班號:</b> ${callsign}<br>
+              <b>高度:</b> ${altitude} ft<br>
+              <b>航向:</b> ${heading}°<br>
+              <b>應答機:</b> ${squawk}
+            `);
+
+          flightMarkers[id] = marker;
+        }
+      } catch (err) {
+        console.error("抓取航班資料失敗", err);
+      }
+    }
+
+    // 第一次載入
+    fetchFlights();
+
+    // 每 15 秒更新一次
+    setInterval(fetchFlights, 15000);
+  </script>
+</body>
+</html>
