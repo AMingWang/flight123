@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>臺灣空域雷達監控 (使用 ADSB.app 數據)</title>
+    <title>臺灣空域雷達監控 (OpenSky 代理版)</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <style>
         /* 基礎樣式 */
@@ -42,12 +42,13 @@
 <body>
     <div id="map"></div>
     <div class="info" id="status-info">
-        臺灣空域航班監控（數據來自 ADSB.app 公共 API）
+        臺灣空域航班監控（數據通過 CORS 代理自 OpenSky Network）
         <div class="status-text">載入中...</div>
     </div>
 
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script>
+        // 設定地圖中心在桃園機場附近，Zoom level 9
         var map = L.map('map').setView([25.08, 121.23], 9); 
         
         // OpenStreetMap Tile Layer
@@ -71,46 +72,61 @@
         }
 
         /**
-         * 抓取航班資料的異步函數 (使用 ADSB.app API)
+         * 抓取航班資料的異步函數 (通過 CORS Anywhere 代理 OpenSky)
          */
         async function fetchFlights() {
-            // ADSB.app 的公共 API 範例。邊界：臺灣北部 (lat: 22-28, lon: 118-123)
-            // 這是目前已知少數能繞過 CORS 且無需後端代理的公共端點之一。
-            const ADSB_API_URL = "https://public-api.adsb.app/api/v1/aircraft/json?lat=25.0&lon=121.5&radius=250";
-            let url = ADSB_API_URL;
+            // OpenSky API 根網址
+            const OPENSKY_ROOT_URL = "https://opensky-network.org/api";
+            
+            // 完整的 OpenSky API URL (臺灣北部邊界: lamin=24.5&lomin=120.5&lamax=26.0&lomax=122.0)
+            const OPENSKY_API_URL = `${OPENSKY_ROOT_URL}/states/all?lamin=24.5&lomin=120.5&lamax=26.0&lomax=122.0`;
+            
+            // ⚠️ 這是關鍵！將 OpenSky URL 包裹在公共 CORS 代理中
+            // ❗ 如果 CORS Anywhere 失敗，您需要替換這個代理服務！
+            const PROXY_BASE = "https://cors-anywhere.herokuapp.com/";
+            let url = PROXY_BASE + OPENSKY_API_URL;
             
             try {
-                statusText.textContent = `更新數據中... (${new Date().toLocaleTimeString('zh-TW')})`;
+                statusText.textContent = `嘗試通過 CORS 代理更新 OpenSky 數據... (${new Date().toLocaleTimeString('zh-TW')})`;
                 statusText.classList.remove('error');
 
                 let res = await fetch(url);
                 
+                // 檢查是否為 CORS Anywhere 的啟動頁面
+                const text = await res.clone().text(); 
+                if (text.includes('CORS Anywhere Demo') || text.includes('must click the button to authorize')) {
+                    statusText.textContent = "請先手動授權 CORS 代理服務，然後刷新頁面。";
+                    statusText.classList.add('error');
+                    return; // 終止執行，等待用戶授權
+                }
+                
                 if (!res.ok) {
-                    throw new Error(`HTTP 錯誤: ${res.status}. (API 服務異常)`);
+                    throw new Error(`HTTP 錯誤: ${res.status}. (CORS 代理或 OpenSky 服務異常)`);
                 }
                 
                 let data = await res.json();
                 
-                const aircrafts = data.aircraft || [];
+                const states = data.states || [];
                 let flightCount = 0;
                 let activeFlights = new Set(); 
+                
+                // --- 數據解析邏輯 ---
+                for (const f of states) {
+                    // OpenSky State Vector 索引：
+                    const icao24 = f[0];        
+                    const callsign = f[1] ? f[1].trim() : "N/A"; 
+                    const lon = f[5];           
+                    const lat = f[6];           
+                    const velocity = f[9];      
+                    const heading = f[10];      
+                    const altitude = f[13];     
+                    const squawk = f[14] || "----"; 
 
-                for (const ac of aircrafts) {
-                    // ADSB.app 數據欄位：
-                    const icao24 = ac.hex;          // 唯一 ID
-                    const callsign = ac.flight ? ac.flight.trim() : "N/A"; // 航班號
-                    const lat = ac.lat;             // 緯度
-                    const lon = ac.lon;             // 經度
-                    const velocity = ac.gs;         // 地速 (節 - kt)
-                    const heading = ac.track;       // 航向 (度)
-                    const altitude = ac.alt_baro;   // 氣壓高度 (英呎 - ft)
-                    const squawk = ac.squawk || "----"; // 應答機
-
-                    // 僅處理有有效經緯度和高度的數據
-                    if (lat === null || lon === null || altitude === null) continue;
+                    if (lat === null || lon === null) continue;
                     
-                    const altitudeFt = altitude !== null ? Math.round(altitude) : 'N/A';
-                    const speedKt = velocity !== null ? Math.round(velocity) : 'N/A';
+                    // 單位轉換
+                    const altitudeFt = altitude !== null ? Math.round(altitude * 3.28084) : 'N/A';
+                    const speedKt = velocity !== null ? Math.round(velocity * 1.94384) : 'N/A';
                     const headingDeg = heading !== null ? Math.round(heading) : 0;
                     
                     activeFlights.add(icao24);
@@ -153,8 +169,7 @@
             
             } catch (err) {
                 console.error("抓取航班資料失敗", err);
-                // 數據源失敗時的錯誤訊息
-                statusText.textContent = `數據更新失敗！請檢查 ADSB.app API 狀態或網路。`;
+                statusText.textContent = "數據更新失敗：請檢查 CORS 代理服務的狀態！";
                 statusText.classList.add('error');
             }
         }
