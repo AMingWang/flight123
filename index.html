@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>臺灣空域雷達監控 (OpenSky AllOrigins 代理版)</title>
+    <title>臺灣空域雷達監控 (Vercel 代理版)</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <style>
         /* 樣式部分保持不變 */
@@ -41,7 +41,7 @@
 <body>
     <div id="map"></div>
     <div class="info" id="status-info">
-        臺灣空域航班監控（數據通過 AllOrigins 代理自 OpenSky Network）
+        臺灣空域航班監控（數據通過 **您的 Vercel 代理** 自 OpenSky Network 獲取）
         <div class="status-text">載入中...</div>
     </div>
 
@@ -71,42 +71,28 @@
         }
 
         /**
-         * 抓取航班資料的異步函數 (使用 AllOrigins 代理 OpenSky)
+         * 抓取航班資料的異步函數 (使用 Vercel 代理 OpenSky)
          */
         async function fetchFlights() {
-            // OpenSky API URL (臺灣北部邊界: lamin=24.5&lomin=120.5&lamax=26.0&lomax=122.0)
-            const OPENSKY_API_URL = "https://opensky-network.org/api/states/all?lamin=24.5&lomin=120.5&lamax=26.0&lomax=122.0";
-            
-            // ⚠️ 這是關鍵！將 OpenSky URL 包裹在 AllOrigins 代理中
-            const ENCODED_URL = encodeURIComponent(OPENSKY_API_URL);
-            const PROXY_BASE = "https://api.allorigins.win/get?url=";
-            let url = PROXY_BASE + ENCODED_URL;
+            // 🚨 這是關鍵！請替換成您在 Vercel 部署後獲得的實際網址！
+            // 範例：https://my-flight-proxy.vercel.app/api/proxy
+            const PROXY_URL = "https://<YOUR-VERCEL-DOMAIN>/api/proxy"; 
+            let url = PROXY_URL;
             
             try {
-                statusText.textContent = `嘗試通過 AllOrigins 代理更新 OpenSky 數據... (${new Date().toLocaleTimeString('zh-TW')})`;
+                statusText.textContent = `嘗試通過 Vercel 代理更新 OpenSky 數據... (${new Date().toLocaleTimeString('zh-TW')})`;
                 statusText.classList.remove('error');
 
                 let res = await fetch(url);
 
                 if (!res.ok) {
-                    throw new Error(`HTTP 錯誤: ${res.status}. (AllOrigins 代理服務異常)`);
+                    // 如果 Vercel 代理返回錯誤 (例如 500), 則拋出錯誤
+                    throw new Error(`HTTP 錯誤: ${res.status}. (請檢查 Vercel 部署或 API 錯誤)`);
                 }
                 
-                // AllOrigins 返回的數據結構是 { contents: "...", status: { ... } }
-                const proxyData = await res.json();
+                // Vercel 代理已直接返回 OpenSky 的 JSON 數據
+                let data = await res.json();
                 
-                // OpenSky 的數據是 JSON 字符串，需要二次解析
-                if (!proxyData.contents) {
-                    throw new Error("代理響應結構錯誤或內容為空。");
-                }
-                
-                let data;
-                try {
-                    data = JSON.parse(proxyData.contents);
-                } catch (e) {
-                    throw new Error("無法解析 OpenSky 返回的內容。");
-                }
-
                 const states = data.states || [];
                 let flightCount = 0;
                 let activeFlights = new Set(); 
@@ -167,10 +153,10 @@
                 }
                 
                 statusText.textContent = `成功載入 ${flightCount} 筆航班資訊 (${new Date().toLocaleTimeString('zh-TW')})`;
-            
+
             } catch (err) {
                 console.error("抓取航班資料失敗", err);
-                statusText.textContent = "數據更新失敗：AllOrigins 代理服務或 OpenSky API 無法訪問。";
+                statusText.textContent = "數據更新失敗：請檢查 Vercel 代理服務是否正確部署。";
                 statusText.classList.add('error');
             }
         }
