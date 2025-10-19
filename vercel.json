@@ -1,16 +1,13 @@
 {
-  "routes": [
+  "functions": {
+    "api/proxy.js": { 
+      "runtime": "node@18.x" 
+    }
+  },
+  "rewrites": [ 
     {
-      "src": "/api/proxy",
-      "dest": "/api/proxy.js"
-    },
-    {
-      "src": "/",
-      "dest": "index.html"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/$1"
+      "source": "/api/proxy",
+      "destination": "/api/proxy.js"
     }
   ]
 }
