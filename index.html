@@ -2,10 +2,10 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>桃園機場航班雷達 (FR24 代理版)</title>
+    <title>桃園機場航班雷達 (FR24 AllOrigins 代理版)</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <style>
-        /* 基礎樣式 */
+        /* 樣式部分保持不變 */
         body { 
             margin: 0; 
             padding: 0; 
@@ -16,7 +16,6 @@
             height: 100vh; 
             z-index: 1; 
         }
-        /* 資訊浮動面板樣式 */
         .info {
             position: absolute;
             top: 10px;
@@ -42,16 +41,14 @@
 <body>
     <div id="map"></div>
     <div class="info" id="status-info">
-        桃園國際機場航班監控（數據通過 CORS 代理自 FlightRadar24）
+        桃園國際機場航班監控（數據通過 AllOrigins 代理自 FlightRadar24）
         <div class="status-text">載入中...</div>
     </div>
 
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script>
-        // 設定地圖中心在桃園機場附近，Zoom level 9
         var map = L.map('map').setView([25.08, 121.23], 9); 
         
-        // OpenStreetMap Tile Layer
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 18,
             attribution: '© OpenStreetMap'
@@ -60,7 +57,6 @@
         var flightMarkers = {};
         var statusText = document.getElementById('status-info').querySelector('.status-text');
 
-        // 飛機圖標 (旋轉)
         function createPlaneIcon(heading) {
             return L.divIcon({
                 className: "plane-icon",
@@ -72,35 +68,38 @@
         }
 
         /**
-         * 抓取航班資料的異步函數 (通過 CORS Anywhere 代理 FR24)
+         * 抓取航班資料的異步函數 (使用 AllOrigins 代理 FR24)
          */
         async function fetchFlights() {
             // 原始 FR24 API URL (臺灣北部邊界: 25.5,24.8,121.7,121.0)
             const FR24_API_URL = "https://data-live.flightradar24.com/zones/fcgi/feed.js?bounds=25.5,24.8,121.7,121.0";
             
-            // ⚠️ 這是關鍵！將 FR24 URL 包裹在公共 CORS 代理中
-            const PROXY_BASE = "https://cors-anywhere.herokuapp.com/";
-            let url = PROXY_BASE + FR24_API_URL;
+            // ⚠️ 這是關鍵！將 FR24 URL 包裹在 AllOrigins 代理中
+            // 該服務的網址需要進行 URI 編碼
+            const ENCODED_URL = encodeURIComponent(FR24_API_URL);
+            const PROXY_BASE = "https://api.allorigins.win/get?url=";
+            let url = PROXY_BASE + ENCODED_URL;
             
             try {
-                statusText.textContent = `嘗試通過 CORS 代理更新 FR24 數據... (${new Date().toLocaleTimeString('zh-TW')})`;
+                statusText.textContent = `嘗試通過 AllOrigins 代理更新 FR24 數據... (${new Date().toLocaleTimeString('zh-TW')})`;
                 statusText.classList.remove('error');
 
                 let res = await fetch(url);
 
-                // 檢查是否為 CORS Anywhere 的授權頁面（處理第一次訪問時的失敗）
-                const text = await res.clone().text(); 
-                if (text.includes('CORS Anywhere Demo') || text.includes('must click the button to authorize')) {
-                    statusText.textContent = "請先手動授權 CORS 代理服務，然後刷新頁面。";
-                    statusText.classList.add('error');
-                    return; // 終止執行，等待用戶授權
-                }
-                
                 if (!res.ok) {
-                    throw new Error(`HTTP 錯誤: ${res.status}. (CORS 代理或 FR24 服務異常)`);
+                    throw new Error(`HTTP 錯誤: ${res.status}. (AllOrigins 代理或 FR24 服務異常)`);
                 }
                 
-                let data = await res.json();
+                // AllOrigins 返回的數據結構是 { contents: "...", status: { ... } }
+                const proxyData = await res.json();
+                
+                // 解析出實際的 FR24 JSON 字符串
+                if (!proxyData.contents) {
+                    throw new Error("代理響應結構錯誤或內容為空。");
+                }
+                
+                // FR24 的數據是 JSON 字符串，需要二次解析
+                let data = JSON.parse(proxyData.contents);
                 
                 let flightCount = 0;
                 let activeFlights = new Set(); 
@@ -111,9 +110,8 @@
 
                 // --- 數據解析邏輯 (使用 FR24 的陣列格式) ---
                 for (let id in data) {
-                    let f = data[id]; // 航班資料陣列
-
-                    // FR24 數據陣列索引：
+                    let f = data[id]; 
+                    
                     const icao24 = id;
                     const lat = f[1];             // 緯度
                     const lon = f[2];             // 經度
@@ -165,7 +163,8 @@
             
             } catch (err) {
                 console.error("抓取航班資料失敗", err);
-                statusText.textContent = "數據更新失敗：請檢查 CORS 代理服務的狀態！";
+                // 數據更新失敗時的錯誤訊息，提醒用戶檢查代理狀態
+                statusText.textContent = "數據更新失敗：AllOrigins 代理服務或 FR24 API 無法訪問。";
                 statusText.classList.add('error');
             }
         }
