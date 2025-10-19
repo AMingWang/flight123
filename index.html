@@ -3,17 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0"> 
-    <title>臺灣空域雷達監控 (響應式)</title>
+    <title>臺灣空域雷達監控 (亮色主題)</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <style>
         /* ========================================================== */
-        /* 基礎樣式與大螢幕佈局 (Desktop First) */
+        /* 基礎樣式與亮色主題 (Bright Theme) */
         /* ========================================================== */
         body { 
             margin: 0; 
             padding: 0; 
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #121212; 
+            background-color: #f0f0f0; /* 亮色背景 */
         }
         #map { 
             width: 100%; 
@@ -21,121 +21,128 @@
             z-index: 1; 
         }
 
-        /* 主容器：使用 Flexbox 來自動管理左側所有卡片 */
+        /* 主容器：使用 Flexbox 垂直堆疊卡片 */
         .left-ui-container {
             position: absolute;
             top: 15px;
             left: 15px;
             z-index: 1000;
             display: flex;
-            flex-direction: column; /* 垂直堆疊 */
+            flex-direction: column;
             gap: 10px;
         }
 
-        /* 卡片通用樣式 - 大螢幕固定寬度 */
+        /* 卡片通用樣式 - 亮色主題 */
         .card {
-            background: rgba(45, 45, 45, 0.95);
-            color: #E0E0E0;
+            background: rgba(255, 255, 255, 0.95); /* 亮白背景 */
+            color: #333; /* 深色文字 */
             padding: 12px 18px;
             border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-            border: 1px solid #555;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            border: 1px solid #ddd; /* 淺色邊框 */
             line-height: 1.6;
-            width: 280px; /* 增加寬度以適應內容，但仍為固定 */
-            transition: width 0.3s;
+            width: 280px; 
         }
 
-        /* 統計與篩選卡片 */
-        .stats-card, .filter-card {
-            order: 1; /* 保持在頂部 */
-        }
-        /* 狀態卡片 (在大螢幕上保持在底部) */
-        .status-card {
-            order: 3;
-            max-width: 450px;
-        }
+        /* 統計與狀態卡片排序 (大螢幕) */
+        .stats-card { order: 1; }
+        .filter-card { order: 2; }
+        .status-card { order: 3; max-width: 450px; }
 
-        /* 右側詳情面板 - 大螢幕 (從右側滑入) */
+        /* 統計數字樣式 */
+        .count-label { display: inline-block; width: 140px; font-weight: normal; font-size: 15px; }
+        .count-number { font-size: 18px; font-weight: bold; margin-left: 5px; }
+        .arrival { color: #388E3C; } /* 深綠色 */
+        .departure { color: #1976D2; } /* 藍色 */
+        .total { color: #FFA000; } /* 橙色 */
+        
+        /* 標題與分隔線 */
+        h3 { 
+            margin: 0 0 10px 0; 
+            padding-bottom: 5px; 
+            border-bottom: 1px solid #ccc; /* 淺色分隔線 */
+            font-size: 16px; 
+            color: #333; 
+        }
+        .filter-card output {
+            font-weight: bold;
+            color: #1976D2;
+        }
+        .error { color: #D32F2F; font-weight: bold; } /* 紅色錯誤提示 */
+
+        /* 飛機圖標 (改為深色，在地圖上更清晰) */
+        .plane-icon { transform-origin: center center; cursor: pointer; }
+
+        /* ========================================================== */
+        /* 右側詳情面板 - 亮色主題 */
+        /* ========================================================== */
         #detail-panel {
             position: absolute;
             top: 0;
             right: 0;
-            width: 300px; /* 固定寬度 */
+            width: 300px;
             height: 100vh;
-            background: rgba(30, 30, 30, 0.98);
-            color: #E0E0E0;
+            background: rgba(255, 255, 255, 0.98); /* 亮白背景 */
+            color: #333;
             z-index: 999;
             padding: 20px;
-            box-shadow: -4px 0 10px rgba(0, 0, 0, 0.5);
-            transform: translateX(300px); /* 默認隱藏 */
+            box-shadow: -4px 0 10px rgba(0, 0, 0, 0.2);
+            transform: translateX(300px); 
             transition: transform 0.3s ease-in-out;
-            overflow-y: auto;
+            overflow-y: auto; /* 確保內容可滾動 */
         }
         #detail-panel.visible {
             transform: translateX(0);
         }
-
-        /* 其他輔助樣式保持不變 */
-        .error { color: #FF6B6B; font-weight: bold; }
-        .count-label { display: inline-block; width: 140px; font-weight: normal; font-size: 15px; }
-        .count-number { font-size: 18px; font-weight: bold; margin-left: 5px; }
-        .arrival { color: #81C784; }
-        .departure { color: #64B5F6; }
-        .total { color: #FFD54F; }
-        .plane-icon { transform-origin: center center; cursor: pointer; }
-        h3 { margin: 0 0 10px 0; padding-bottom: 5px; border-bottom: 1px solid #555; font-size: 16px; color: #F5F5F5; }
+        #detail-panel h3 {
+            color: #1976D2;
+            border-bottom: 1px solid #ccc;
+        }
+        #detail-panel button {
+            background: #D32F2F; /* 紅色關閉按鈕 */
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            float: right;
+        }
 
         /* ========================================================== */
-        /* 小螢幕響應式佈局 (Media Query for max-width: 600px) */
+        /* 小螢幕響應式佈局 (Max-width: 600px) */
         /* ========================================================== */
         @media (max-width: 600px) {
             
-            /* 調整主容器，將所有 UI 卡片移到頂部並橫跨螢幕 */
             .left-ui-container {
                 top: 0;
                 left: 0;
-                /* 更改為水平堆疊，如果空間足夠（雖然手機通常不夠） */
-                flex-direction: column; 
                 width: 100%;
                 gap: 5px;
-                padding: 10px;
-                background: rgba(18, 18, 18, 0.9); /* 確保 UI 不會被地圖圖塊遮擋 */
+                padding: 5px 0; /* 減少邊距 */
+                background: rgba(240, 240, 240, 0.95); /* 確保 UI 不會被地圖圖塊遮擋 */
             }
 
-            /* 所有卡片：全寬且減少內邊距 */
             .card {
                 width: auto; 
-                margin: 0 5px; /* 增加左右間隔 */
+                margin: 0 10px; 
                 padding: 8px 12px;
-                box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
             }
             
-            /* 統計卡片 - 調整行寬度 */
-            .count-label {
-                width: 120px;
-                font-size: 13px;
-            }
-            .count-number {
-                font-size: 16px;
-            }
+            .count-label { width: 120px; font-size: 13px; }
+            .count-number { font-size: 16px; }
 
-            /* 地圖樣式切換按鈕 */
+            /* 隱藏地圖樣式按鈕 (因為我們刪除了暗色選項) */
             #map-style-toggle {
-                width: 100%;
-                margin: 0 5px;
+                display: none;
             }
             
-            /* 右側詳情面板 - 小螢幕 (從底部滑入並全寬) */
+            /* 右側詳情面板 - 手機優化 */
             #detail-panel {
                 width: 100%;
-                height: 70vh; /* 佔據螢幕底部 70% */
+                height: 70vh; 
                 bottom: 0;
                 top: auto;
-                transform: translateY(70vh); /* 默認隱藏 */
-                transition: transform 0.3s ease-in-out;
-            }
-            #detail-panel.visible {
-                transform: translateY(0);
+                transform: translateY(70vh); 
             }
         }
     </style>
@@ -153,27 +160,27 @@
             <span class="count-label arrival">正在抵達 (Descending):</span>
             <span id="arrival-flights" class="count-number arrival">0</span>
             
-            <hr style="border-color: #555; margin: 10px 0;">
+            <hr style="border-color: #ccc; margin: 10px 0;">
             
-            <label for="auto-refresh-toggle" style="font-weight: normal; font-size: 15px; color: #F5F5F5;">
+            <label for="auto-refresh-toggle" style="font-weight: normal; font-size: 15px; color: #333;">
                 <input type="checkbox" id="auto-refresh-toggle" checked style="margin-right: 5px;">
                 數據自動更新
             </label>
         </div>
         
-        <button id="map-style-toggle" style="background: #333; color: white; border: 1px solid #555; padding: 8px 12px; border-radius: 4px; cursor: pointer;">
-            切換地圖: 暗色
+        <button id="map-style-toggle" style="display: none;">
+            切換地圖: 標準
         </button>
 
         <div class="card filter-card">
             <h3>篩選器</h3>
             
-            <label for="alt-range" style="font-weight: normal; font-size: 15px; color: #F5F5F5;">
+            <label for="alt-range" style="font-weight: normal; font-size: 15px; color: #333;">
                 最小高度 (ft): <output id="alt-output">0</output>
             </label>
             <input type="range" id="alt-range" min="0" max="40000" step="1000" value="0">
             
-            <label for="vs-range" style="font-weight: normal; font-size: 15px; color: #F5F5F5;">
+            <label for="vs-range" style="font-weight: normal; font-size: 15px; color: #333;">
                 最小垂直速度 (|ft/min|): <output id="vs-output">0</output>
             </label>
             <input type="range" id="vs-range" min="0" max="3000" step="100" value="0">
@@ -197,28 +204,27 @@
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script>
         // ==========================================================
-        // 核心配置 (保持不變)
+        // 核心配置
         // ==========================================================
         const PROXY_URL = "https://flight123.vercel.app/api/proxy"; 
         const INITIAL_VIEW = [25.08, 121.23];
         const INITIAL_ZOOM = 9;
         
+        // 🚨 刪除暗色圖層配置，只保留標準圖層
         const mapLayers = {
             standard: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap' }),
-            dark: L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png', { maxZoom: 20, attribution: '© Stadia Maps' })
         };
         
         // ==========================================================
         // 初始化
         // ==========================================================
         var map = L.map('map').setView(INITIAL_VIEW, INITIAL_ZOOM); 
-        mapLayers.dark.addTo(map); 
-        var currentMapStyle = 'dark'; 
+        mapLayers.standard.addTo(map); // 預設使用標準亮色地圖
         
         var flightMarkers = {};
         var intervalId = null;
         
-        // UI 元素 (保持不變)
+        // UI 元素
         const statusText = document.getElementById('status-info').querySelector('.status-text');
         const totalFlightsEl = document.getElementById('total-flights');
         const departureFlightsEl = document.getElementById('departure-flights');
@@ -226,20 +232,20 @@
         const detailPanel = document.getElementById('detail-panel');
         const detailContent = document.getElementById('flight-details-content');
         const toggleButton = document.getElementById('auto-refresh-toggle');
-        const mapStyleToggleBtn = document.getElementById('map-style-toggle');
         const altRange = document.getElementById('alt-range');
         const vsRange = document.getElementById('vs-range');
         const altOutput = document.getElementById('alt-output');
         const vsOutput = document.getElementById('vs-output');
 
         // ==========================================================
-        // 地圖相關輔助功能 (保持不變)
+        // 地圖相關輔助功能
         // ==========================================================
 
+        // 飛機圖標 (改為深色，在地圖上更清晰)
         function createPlaneIcon(heading) {
             return L.divIcon({
                 className: "plane-icon",
-                html: `<img src="https://api.iconify.design/game-icons:airplane-departure.svg?color=white" 
+                html: `<img src="https://api.iconify.design/game-icons:airplane-departure.svg?color=#333333" 
                                style="width:28px; height: 28px; transform: rotate(${heading}deg);">`,
                 iconSize: [28, 28],
                 iconAnchor: [14, 14]
@@ -254,7 +260,7 @@
             ];
             const airportIcon = L.divIcon({
                 className: 'airport-icon',
-                html: `<div style="background:#fff; border-radius:50%; width:8px; height:8px; border:2px solid #64B5F6;"></div>`,
+                html: `<div style="background:#1976D2; border-radius:50%; width:8px; height:8px; border:2px solid #333;"></div>`,
                 iconSize: [12, 12],
                 iconAnchor: [6, 6]
             });
@@ -280,11 +286,11 @@
         });
 
         // ==========================================================
-        // 數據抓取與處理 (保持不變)
+        // 數據抓取與處理 (保持邏輯不變)
         // ==========================================================
 
         async function fetchFlights() {
-            // (內容與前一版本相同，省略以保持簡潔)
+            
             try {
                 statusText.textContent = `嘗試通過 Vercel 代理更新 OpenSky 數據... (${new Date().toLocaleTimeString('zh-TW')})`;
                 statusText.classList.remove('error');
@@ -396,7 +402,7 @@
         }
         
         // ==========================================================
-        // 事件監聽與控制邏輯 (保持不變)
+        // 事件監聽與控制邏輯 (保持邏輯不變)
         // ==========================================================
         
         function startFetching() {
@@ -419,20 +425,8 @@
             this.checked ? startFetching() : stopFetching();
         });
         
-        mapStyleToggleBtn.addEventListener('click', () => {
-            if (currentMapStyle === 'standard') {
-                map.removeLayer(mapLayers.standard);
-                mapLayers.dark.addTo(map);
-                currentMapStyle = 'dark';
-                mapStyleToggleBtn.textContent = '切換地圖: 暗色';
-            } else {
-                map.removeLayer(mapLayers.dark);
-                mapLayers.standard.addTo(map);
-                currentMapStyle = 'standard';
-                mapStyleToggleBtn.textContent = '切換地圖: 標準';
-            }
-        });
-        
+        // 刪除 mapStyleToggleBtn 的監聽器
+
         let filterTimeout;
         function updateAndRefetch() {
             clearTimeout(filterTimeout);
@@ -455,8 +449,6 @@
             updateAndRefetch();
         });
 
-
-        // 第一次載入時啟動
         startFetching();
     </script>
 </body>
