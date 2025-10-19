@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0"> 
-    <title>臺灣空域雷達監控 (深色 UI / 亮色地圖)</title>
+    <title>臺灣空域雷達監控 (無詳情面板)</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <style>
         /* ========================================================== */
@@ -29,7 +29,7 @@
             z-index: 1000;
         }
 
-        /* 2. 左下角容器 (狀態卡片) ⬅️ 確保狀態卡片在左下角 */
+        /* 2. 左下角容器 (狀態卡片) */
         .info-container-bottom {
             position: absolute;
             bottom: 15px; 
@@ -37,10 +37,10 @@
             z-index: 1000;
         }
         
-        /* 3. 篩選器容器 (位於左上角下方，防止溢出) */
+        /* 3. 篩選器容器 (位於左上角下方) */
         .filter-container {
             position: absolute;
-            top: 200px; /* 估計在統計卡片下方 */
+            top: 200px; 
             left: 15px;
             z-index: 1000;
         }
@@ -52,7 +52,7 @@
             padding: 12px 18px;
             border-radius: 8px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-            border: 1px solid #555; /* 淺深色邊框 */
+            border: 1px solid #555; 
             line-height: 1.6;
             width: 280px; /* 大螢幕固定寬度 */
         }
@@ -60,9 +60,9 @@
         /* 統計數字樣式 */
         .count-label { display: inline-block; width: 140px; font-weight: normal; font-size: 15px; }
         .count-number { font-size: 18px; font-weight: bold; margin-left: 5px; }
-        .arrival { color: #81C784; } /* 綠色 */
-        .departure { color: #64B5F6; } /* 藍色 */
-        .total { color: #FFD54F; } /* 黃色 */
+        .arrival { color: #81C784; }
+        .departure { color: #64B5F6; }
+        .total { color: #FFD54F; }
         
         /* 標題與分隔線 */
         h3 { 
@@ -76,46 +76,11 @@
             font-weight: bold;
             color: #64B5F6;
         }
-        .error { color: #FF6B6B; font-weight: bold; } /* 紅色錯誤提示 */
+        .error { color: #FF6B6B; font-weight: bold; }
 
-        /* 飛機圖標 (保持深色，在地圖上更清晰) */
+        /* 飛機圖標 */
         .plane-icon { transform-origin: center center; cursor: pointer; }
 
-        /* ========================================================== */
-        /* 右側詳情面板 - 深色主題 */
-        /* ========================================================== */
-        #detail-panel {
-            position: absolute;
-            top: 0;
-            right: 0;
-            width: 300px;
-            height: 100vh;
-            background: rgba(30, 30, 30, 0.98); /* 深色背景 */
-            color: #E0E0E0;
-            z-index: 999;
-            padding: 20px;
-            box-shadow: -4px 0 10px rgba(0, 0, 0, 0.5);
-            transform: translateX(300px); 
-            transition: transform 0.3s ease-in-out;
-            overflow-y: auto;
-        }
-        #detail-panel.visible {
-            transform: translateX(0);
-        }
-        #detail-panel h3 {
-            color: #64B5F6;
-            border-bottom: 1px solid #555;
-        }
-        #detail-panel button {
-            background: #FF6B6B; 
-            color: white;
-            border: none;
-            padding: 5px 10px;
-            border-radius: 4px;
-            cursor: pointer;
-            float: right;
-        }
-        
         /* ========================================================== */
         /* 小螢幕響應式佈局 (Max-width: 600px) */
         /* ========================================================== */
@@ -132,11 +97,10 @@
                 top: 5px;
                 left: 0;
                 width: 100%;
-                /* 為了手機佈局，使用 Flexbox 垂直堆疊 */
                 display: flex;
                 flex-direction: column;
                 gap: 5px;
-                background: rgba(30, 30, 30, 0.95); /* 確保 UI 不會被地圖遮擋 */
+                background: rgba(30, 30, 30, 0.95); 
                 padding-bottom: 5px;
                 box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
             }
@@ -145,13 +109,9 @@
             .filter-container {
                 position: static;
                 margin: 0 10px; 
-                box-shadow: none; /* 移除額外陰影 */
-                border: none;
-                background: transparent; /* 移除背景，融入 top 容器 */
                 padding: 0;
             }
             .filter-container .card {
-                /* 讓篩選卡片有自己的背景和邊框 */
                 background: rgba(40, 40, 40, 0.95);
                 border: 1px solid #444;
                 margin: 5px 0;
@@ -168,18 +128,8 @@
                 margin: 0 10px;
             }
             
-            /* 調整文字大小以適應手機 */
             .count-label { width: 120px; font-size: 13px; }
             .count-number { font-size: 16px; }
-
-            /* 右側詳情面板 - 手機優化 */
-            #detail-panel {
-                width: 100%;
-                height: 70vh; 
-                bottom: 0;
-                top: auto;
-                transform: translateY(70vh); 
-            }
         }
     </style>
 </head>
@@ -203,8 +153,6 @@
                 數據自動更新
             </label>
         </div>
-        
-        <button id="map-style-toggle" style="display: none;"></button>
     </div>
     
     <div class="filter-container">
@@ -230,15 +178,6 @@
         </div>
     </div>
     
-    <div id="detail-panel">
-        <button id="close-panel">關閉</button>
-        <h3>航班詳細資訊</h3>
-        <div id="flight-details-content">
-            請點擊地圖上的飛機圖標以查看詳情。
-        </div>
-    </div>
-
-
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script>
         // ==========================================================
@@ -248,7 +187,6 @@
         const INITIAL_VIEW = [25.08, 121.23];
         const INITIAL_ZOOM = 9;
         
-        // 只保留亮色地圖圖層
         const mapLayers = {
             standard: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap' }),
         };
@@ -257,7 +195,7 @@
         // 初始化
         // ==========================================================
         var map = L.map('map').setView(INITIAL_VIEW, INITIAL_ZOOM); 
-        mapLayers.standard.addTo(map); // 預設使用標準亮色地圖
+        mapLayers.standard.addTo(map); 
         
         var flightMarkers = {};
         var intervalId = null;
@@ -267,8 +205,7 @@
         const totalFlightsEl = document.getElementById('total-flights');
         const departureFlightsEl = document.getElementById('departure-flights');
         const arrivalFlightsEl = document.getElementById('arrival-flights');
-        const detailPanel = document.getElementById('detail-panel');
-        const detailContent = document.getElementById('flight-details-content');
+        // 刪除 detailPanel, detailContent
         const toggleButton = document.getElementById('auto-refresh-toggle');
         const altRange = document.getElementById('alt-range');
         const vsRange = document.getElementById('vs-range');
@@ -279,7 +216,6 @@
         // 地圖相關輔助功能
         // ==========================================================
 
-        // 飛機圖標 (保持深色，在地圖上更清晰)
         function createPlaneIcon(heading) {
             return L.divIcon({
                 className: "plane-icon",
@@ -311,20 +247,11 @@
         }
         addAirportMarkers();
 
-        function showDetailPanel(icao24, content) {
-            detailContent.innerHTML = content;
-            detailPanel.classList.add('visible');
-            if (flightMarkers[icao24]) {
-                map.flyTo(flightMarkers[icao24].getLatLng(), 10);
-            }
-        }
-        
-        document.getElementById('close-panel').addEventListener('click', () => {
-            detailPanel.classList.remove('visible');
-        });
+        // ⚠️ 刪除 showDetailPanel 函數
+        // ⚠️ 刪除 document.getElementById('close-panel') 監聽器
 
         // ==========================================================
-        // 數據抓取與處理 (保持邏輯不變)
+        // 數據抓取與處理
         // ==========================================================
 
         async function fetchFlights() {
@@ -383,34 +310,29 @@
                     activeFlights.add(icao24);
                     flightCount++;
 
+                    // 重新定義 Popup 內容
                     let popupContent = `
                         <b>航班號:</b> ${callsign}<br>
-                        <b>高度:</b> ${altitudeFt} ft / <b>速度:</b> ${speedKt} kt<br>
-                        <b>航向:</b> ${headingDeg}° / <b>垂直:</b> ${verticalFtMin} ft/min
+                        <b>ICAO24:</b> ${icao24}<br>
+                        <b>應答機:</b> ${squawk}<br>
+                        <hr style="border-color: #555; margin: 5px 0;">
+                        <b>高度:</b> ${altitudeFt} ft<br>
+                        <b>速度:</b> ${speedKt} kt<br>
+                        <b>垂直:</b> ${verticalFtMin} ft/min<br>
+                        <b>航向:</b> ${headingDeg}°
                     `;
                     
-                    const detailHtml = `
-                        <p><b>航班號:</b> ${callsign}</p>
-                        <p><b>ICAO24:</b> ${icao24}</p>
-                        <p><b>應答機 (Squawk):</b> ${squawk}</p>
-                        <p><b>高度:</b> ${altitudeFt} ft</p>
-                        <p><b>速度:</b> ${speedKt} kt</p>
-                        <p><b>航向:</b> ${headingDeg}°</p>
-                        <p><b>垂直速度:</b> ${verticalFtMin} ft/min</p>
-                        <p style="font-size: 11px; margin-top: 15px;">經緯度: ${lat.toFixed(4)}, ${lon.toFixed(4)}</p>
-                    `;
-
                     if (flightMarkers[icao24]) {
                         let marker = flightMarkers[icao24];
                         marker.setLatLng(new L.LatLng(lat, lon)); 
                         marker.setIcon(createPlaneIcon(headingDeg));
                         marker.setPopupContent(popupContent);
-                        marker.off('click').on('click', () => showDetailPanel(icao24, detailHtml));
+                        // 移除 .on('click', ...)
                     } else {
                         let marker = L.marker([lat, lon], {icon: createPlaneIcon(headingDeg), title: callsign})
                                          .addTo(map)
-                                         .bindPopup(popupContent)
-                                         .on('click', () => showDetailPanel(icao24, detailHtml));
+                                         .bindPopup(popupContent);
+                                         // 移除 .on('click', ...)
 
                         flightMarkers[icao24] = marker;
                     }
@@ -440,7 +362,7 @@
         }
         
         // ==========================================================
-        // 事件監聽與控制邏輯
+        // 事件監聽與控制邏輯 (保持邏輯不變)
         // ==========================================================
         
         function startFetching() {
